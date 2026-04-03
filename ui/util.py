@@ -41,7 +41,7 @@ class Scenario:
     concurrency: int = 1
 
     # GPU
-    gpu_name: str = "NVIDIA-H100-80GB-HBM3"
+    gpu_name: str = "H100"
     gpu_count_avail: int = 1
     gpu_mem_util: float = 0.9
 
@@ -60,7 +60,7 @@ class Scenario:
         return gpu_specs_db[self.gpu_name]
 
     def get_gpu_memory(self, gpu_specs_db: dict) -> int:
-        return self.get_gpu_spec(gpu_specs_db)["memory"]
+        return self.get_gpu_spec(gpu_specs_db)["memory_gb"]
 
     def can_show_mem_util_chart(self, min_gpu_req: int):
         if (
@@ -84,7 +84,7 @@ class Scenario:
         self.max_model_len = 1
         self.concurrency = 1
 
-        self.gpu_name = "NVIDIA-H100-80GB-HBM3"
+        self.gpu_name = "H100"
         self.gpu_count_avail = 1
         self.gpu_mem_util = 0.9
 
@@ -101,6 +101,10 @@ def init_session_state():
 
     if USER_SCENARIO_KEY not in st.session_state:
         st.session_state[USER_SCENARIO_KEY] = Scenario()
+    if SELECTED_MODEL_KEY not in st.session_state:
+        st.session_state[SELECTED_MODEL_KEY] = st.session_state[USER_SCENARIO_KEY].get_model_name()
+    if SELECTED_GPU_NAME_KEY not in st.session_state:
+        st.session_state[SELECTED_GPU_NAME_KEY] = st.session_state[USER_SCENARIO_KEY].gpu_name
 
 
 def update_scenario(session_state_key: str, scenario_attr: str):

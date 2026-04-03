@@ -48,8 +48,12 @@ except ImportError:
     _HAS_KUBERNETES = False
 
 # Map nvidia.com/gpu.product label values to Planner canonical names.
-# All values MUST be members of CANONICAL_GPUS in gpu_normalizer.py.
+# All values MUST be valid gpu_type entries in ModelCatalog (model_catalog.json).
 # Keys are stored lowercase for case-insensitive matching.
+#
+# Note: AMD GPUs (MI300X) use a different label key (amd.com/gpu), not
+# nvidia.com/gpu.product. AMD detection would require a separate label
+# lookup and is not covered by this map.
 GPU_PRODUCT_MAP: dict[str, str] = {
     "nvidia-l4": "L4",
     "nvidia-a100-sxm4-40gb": "A100-40",
@@ -61,6 +65,13 @@ GPU_PRODUCT_MAP: dict[str, str] = {
     "nvidia-h100-pcie-80gb": "H100",
     "nvidia-h200": "H200",
     "nvidia-b200": "B200",
+    "nvidia-a10g": "A10G",
+    "nvidia-l40": "L40",
+    "nvidia-l40-48gb": "L40",
+    "nvidia-l20": "L20",
+    "nvidia-b100": "B100",
+    "nvidia-h200-141gb": "H200",
+    "nvidia-h200-141gb-hbm3": "H200",
 }
 
 
