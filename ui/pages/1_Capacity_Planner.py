@@ -3,18 +3,22 @@ Main Page
 """
 
 import json
-from decimal import Decimal
 from pathlib import Path
 
+from matplotlib import pyplot as plt
 import streamlit as st
 import util
-from matplotlib import pyplot as plt
-
+from api_client import fetch_gpu_types
 from planner.capacity_planner import *
 
-gpu_specs = json.loads(
-    (Path(__file__).parent.parent.parent / "data" / "configuration" / "gpu_specs.json").read_text()
-)
+
+def _load_gpu_specs_fallback() -> dict[str, dict]:
+    """Load GPU specs from gpu_catalog.json when the backend API is unavailable."""
+    catalog_path = (
+        Path(__file__).parent.parent.parent / "data" / "configuration" / "gpu_catalog.json"
+    )
+    data = json.loads(catalog_path.read_text())
+    return {g["gpu_type"]: g for g in data.get("gpu_types", [])}
 
 
 def update_gpu_spec():
@@ -354,10 +358,15 @@ def workload_specification():
                 dp=user_scenario.dp_size,
             )
 
-        except Exception:
-            col2.warning(
-                "Model does not have safetensors data available, cannot estimate KV cache memory requirement."
-            )
+        except Exception as e:
+            from huggingface_hub.utils import NotASafetensorsRepoError
+
+            if isinstance(e, NotASafetensorsRepoError):
+                col2.warning(
+                    "Model does not have safetensors data available, cannot estimate KV cache memory requirement."
+                )
+            else:
+                col2.warning(f"Cannot estimate KV cache memory requirement: {e}")
             return None
 
         try:
@@ -586,11 +595,6 @@ def hardware_specification():
             on_change=util.update_scenario,
             args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
         )
-
-        # Dialog for registering new accelerator data
-        col2.write("\n\nDon't see your accelerator? Register a new one below")
-        if col2.button("Register new accelerator", use_container_width=True):
-            register_new_accelerator()
 
         # For the selected GPU, show memory requirements
         if selected_gpu_name:
@@ -867,6 +871,7 @@ st.caption(
 )
 
 util.init_session_state()
+gpu_specs = fetch_gpu_types() or _load_gpu_specs_fallback()
 
 # Display Capacity Planner headings
 st.subheader("Capacity Planner")
