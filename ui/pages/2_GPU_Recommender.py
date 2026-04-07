@@ -16,8 +16,6 @@ from plotly.subplots import make_subplots
 _gpu_types_data = fetch_gpu_types()
 
 
-
-
 # Initialize session state
 if "recommendation_results" not in st.session_state:
     st.session_state.recommendation_results = None
@@ -432,7 +430,11 @@ if st.session_state.recommendation_results is not None:
             with col1:
                 best_t = estimated_best.get("highest_throughput")
                 if best_t:
-                    st.metric("🚀 Highest Throughput", best_t["gpu"], f"{best_t['throughput_tps']:.2f} tokens/s")
+                    st.metric(
+                        "🚀 Highest Throughput",
+                        best_t["gpu"],
+                        f"{best_t['throughput_tps']:.2f} tokens/s",
+                    )
 
             with col2:
                 best_ttft = estimated_best.get("lowest_ttft")
@@ -447,7 +449,11 @@ if st.session_state.recommendation_results is not None:
             with col4:
                 best_e2e = estimated_best.get("lowest_e2e_latency")
                 if best_e2e:
-                    st.metric("🎯 Lowest E2E Latency", best_e2e["gpu"], f"{best_e2e['e2e_latency_s']:.2f} s")
+                    st.metric(
+                        "🎯 Lowest E2E Latency",
+                        best_e2e["gpu"],
+                        f"{best_e2e['e2e_latency_s']:.2f} s",
+                    )
 
             with col5:
                 best_c = estimated_best.get("lowest_cost")
@@ -742,7 +748,9 @@ if st.session_state.recommendation_results is not None:
                             with col1:
                                 st.write(f"• Memory: `{gpu_spec.get('memory_gb', 'N/A')} GB`")
                                 if gpu_spec.get("compute_capability"):
-                                    st.write(f"• Compute Capability: `{gpu_spec['compute_capability']}`")
+                                    st.write(
+                                        f"• Compute Capability: `{gpu_spec['compute_capability']}`"
+                                    )
                             with col2:
                                 if gpu_spec.get("notes"):
                                     st.write(f"• Notes: `{gpu_spec['notes']}`")
@@ -753,7 +761,11 @@ if st.session_state.recommendation_results is not None:
                         conc_col1, conc_col2 = st.columns(2)
 
                         with conc_col1:
-                            opt_conc = result.get("best_latency", {}).get("optimal_concurrency") if isinstance(result, dict) else None
+                            opt_conc = (
+                                result.get("best_latency", {}).get("optimal_concurrency")
+                                if isinstance(result, dict)
+                                else None
+                            )
                             if opt_conc is not None:
                                 st.write(f"• **Optimal Concurrency:** `{opt_conc}`")
 
@@ -787,17 +799,29 @@ if st.session_state.recommendation_results is not None:
                                         if perf_result.get("itl_ms") is not None:
                                             config_row["ITL (ms)"] = perf_result["itl_ms"]
                                         if perf_result.get("e2e_latency_s") is not None:
-                                            config_row["E2E Latency (s)"] = perf_result["e2e_latency_s"]
+                                            config_row["E2E Latency (s)"] = perf_result[
+                                                "e2e_latency_s"
+                                            ]
                                         if perf_result.get("output_throughput_tps") is not None:
-                                            config_row["Output Throughput (tok/s)"] = perf_result["output_throughput_tps"]
+                                            config_row["Output Throughput (tok/s)"] = perf_result[
+                                                "output_throughput_tps"
+                                            ]
                                         if perf_result.get("input_throughput_tps") is not None:
-                                            config_row["Input Throughput (tok/s)"] = perf_result["input_throughput_tps"]
+                                            config_row["Input Throughput (tok/s)"] = perf_result[
+                                                "input_throughput_tps"
+                                            ]
                                         if perf_result.get("requests_per_sec") is not None:
-                                            config_row["Requests/sec"] = perf_result["requests_per_sec"]
+                                            config_row["Requests/sec"] = perf_result[
+                                                "requests_per_sec"
+                                            ]
                                         if perf_result.get("throughput_tps") is not None:
-                                            config_row["Throughput (tok/s)"] = perf_result["throughput_tps"]
+                                            config_row["Throughput (tok/s)"] = perf_result[
+                                                "throughput_tps"
+                                            ]
                                         if perf_result.get("optimal_concurrency") is not None:
-                                            config_row["Concurrency"] = perf_result["optimal_concurrency"]
+                                            config_row["Concurrency"] = perf_result[
+                                                "optimal_concurrency"
+                                            ]
 
                                     config_data.append(config_row)
 
@@ -822,15 +846,24 @@ if st.session_state.recommendation_results is not None:
                                             with res_col1:
                                                 st.markdown("**Memory & Compute:**")
                                                 if isinstance(perf_result, dict):
-                                                    if perf_result.get("memory_needed_gb") is not None:
+                                                    if (
+                                                        perf_result.get("memory_needed_gb")
+                                                        is not None
+                                                    ):
                                                         st.write(
                                                             f"• Memory Needed: `{perf_result['memory_needed_gb']:.2f} GB`"
                                                         )
-                                                    if perf_result.get("usable_vram_gb") is not None:
+                                                    if (
+                                                        perf_result.get("usable_vram_gb")
+                                                        is not None
+                                                    ):
                                                         st.write(
                                                             f"• Usable VRAM: `{perf_result['usable_vram_gb']:.2f} GB`"
                                                         )
-                                                    if perf_result.get("bottleneck_is_memory") is not None:
+                                                    if (
+                                                        perf_result.get("bottleneck_is_memory")
+                                                        is not None
+                                                    ):
                                                         bottleneck = (
                                                             "Memory"
                                                             if perf_result["bottleneck_is_memory"]
@@ -841,15 +874,28 @@ if st.session_state.recommendation_results is not None:
                                             with res_col2:
                                                 st.markdown("**Arithmetic Intensity:**")
                                                 if isinstance(perf_result, dict):
-                                                    if perf_result.get("prefill_arithmetic_intensity") is not None:
+                                                    if (
+                                                        perf_result.get(
+                                                            "prefill_arithmetic_intensity"
+                                                        )
+                                                        is not None
+                                                    ):
                                                         st.write(
                                                             f"• Prefill: `{perf_result['prefill_arithmetic_intensity']:.2f}`"
                                                         )
-                                                    if perf_result.get("decode_arithmetic_intensity") is not None:
+                                                    if (
+                                                        perf_result.get(
+                                                            "decode_arithmetic_intensity"
+                                                        )
+                                                        is not None
+                                                    ):
                                                         st.write(
                                                             f"• Decode: `{perf_result['decode_arithmetic_intensity']:.2f}`"
                                                         )
-                                                    if perf_result.get("hardware_ops_per_byte") is not None:
+                                                    if (
+                                                        perf_result.get("hardware_ops_per_byte")
+                                                        is not None
+                                                    ):
                                                         st.write(
                                                             f"• HW Ops/Byte: `{perf_result['hardware_ops_per_byte']:.2f}`"
                                                         )
@@ -858,15 +904,23 @@ if st.session_state.recommendation_results is not None:
                                             bound_col1, bound_col2 = st.columns(2)
                                             if isinstance(perf_result, dict):
                                                 with bound_col1:
-                                                    if perf_result.get("prefill_is_memory_bound") is not None:
+                                                    if (
+                                                        perf_result.get("prefill_is_memory_bound")
+                                                        is not None
+                                                    ):
                                                         prefill_status = (
                                                             "✅ Yes"
-                                                            if perf_result["prefill_is_memory_bound"]
+                                                            if perf_result[
+                                                                "prefill_is_memory_bound"
+                                                            ]
                                                             else "❌ No"
                                                         )
                                                         st.write(f"• Prefill: {prefill_status}")
                                                 with bound_col2:
-                                                    if perf_result.get("decode_is_memory_bound") is not None:
+                                                    if (
+                                                        perf_result.get("decode_is_memory_bound")
+                                                        is not None
+                                                    ):
                                                         decode_status = (
                                                             "✅ Yes"
                                                             if perf_result["decode_is_memory_bound"]
@@ -974,7 +1028,9 @@ if st.session_state.recommendation_results is not None:
 
             for gpu_name, result in gpu_results.items():
                 try:
-                    export_data["successful_gpus"][gpu_name] = result if isinstance(result, dict) else str(result)
+                    export_data["successful_gpus"][gpu_name] = (
+                        result if isinstance(result, dict) else str(result)
+                    )
                 except Exception as e:
                     export_data["successful_gpus"][gpu_name] = {"error": str(e)}
 
@@ -1150,7 +1206,10 @@ else:
                         st.write(f"**Compute Capability:** {gpu_spec['compute_capability']}")
 
                     # Cost per hour
-                    if "cost_per_hour_usd" in gpu_spec and gpu_spec["cost_per_hour_usd"] is not None:
+                    if (
+                        "cost_per_hour_usd" in gpu_spec
+                        and gpu_spec["cost_per_hour_usd"] is not None
+                    ):
                         st.write(f"**Cost per Hour:** ${gpu_spec['cost_per_hour_usd']:.2f}")
 
                     # Notes

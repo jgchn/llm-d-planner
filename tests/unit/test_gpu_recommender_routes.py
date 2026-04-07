@@ -43,11 +43,14 @@ def test_estimate_success(mock_recommender_cls):
     mock_rec.get_performance_summary.return_value = MOCK_PERFORMANCE_SUMMARY
     mock_recommender_cls.return_value = mock_rec
 
-    resp = client.post(ROUTE, json={
-        "model_id": "Qwen/Qwen3-32B",
-        "input_len": 512,
-        "output_len": 128,
-    })
+    resp = client.post(
+        ROUTE,
+        json={
+            "model_id": "Qwen/Qwen3-32B",
+            "input_len": 512,
+            "output_len": 128,
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -67,15 +70,18 @@ def test_estimate_with_constraints(mock_recommender_cls):
     }
     mock_recommender_cls.return_value = mock_rec
 
-    resp = client.post(ROUTE, json={
-        "model_id": "Qwen/Qwen3-32B",
-        "input_len": 512,
-        "output_len": 128,
-        "max_ttft": 100.0,
-        "max_itl": 10.0,
-        "max_latency": 2.0,
-        "gpu_list": ["H100", "OldGPU"],
-    })
+    resp = client.post(
+        ROUTE,
+        json={
+            "model_id": "Qwen/Qwen3-32B",
+            "input_len": 512,
+            "output_len": 128,
+            "max_ttft": 100.0,
+            "max_itl": 10.0,
+            "max_latency": 2.0,
+            "gpu_list": ["H100", "OldGPU"],
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["failed_gpus"] == {"OldGPU": "does not fit"}
@@ -93,22 +99,28 @@ def test_estimate_missing_required_fields():
 @pytest.mark.unit
 @patch(f"{MOCK_PATH}.GPURecommender", side_effect=Exception("gated repo"))
 def test_estimate_hf_gated_error(mock_recommender_cls):
-    resp = client.post(ROUTE, json={
-        "model_id": "some/gated-model",
-        "input_len": 512,
-        "output_len": 128,
-    })
+    resp = client.post(
+        ROUTE,
+        json={
+            "model_id": "some/gated-model",
+            "input_len": 512,
+            "output_len": 128,
+        },
+    )
     assert resp.status_code == 403
 
 
 @pytest.mark.unit
 @patch(f"{MOCK_PATH}.GPURecommender", side_effect=Exception("connection refused"))
 def test_estimate_generic_error(mock_recommender_cls):
-    resp = client.post(ROUTE, json={
-        "model_id": "some/model",
-        "input_len": 512,
-        "output_len": 128,
-    })
+    resp = client.post(
+        ROUTE,
+        json={
+            "model_id": "some/model",
+            "input_len": 512,
+            "output_len": 128,
+        },
+    )
     assert resp.status_code == 500
 
 
@@ -120,15 +132,19 @@ def test_estimate_default_gpu_list(mock_recommender_cls):
     mock_rec = MagicMock()
     mock_rec.get_gpu_results.return_value = ({}, {})
     mock_rec.get_performance_summary.return_value = {
-        "estimated_best_performance": {}, "gpu_results": {}
+        "estimated_best_performance": {},
+        "gpu_results": {},
     }
     mock_recommender_cls.return_value = mock_rec
 
-    resp = client.post(ROUTE, json={
-        "model_id": "Qwen/Qwen3-32B",
-        "input_len": 512,
-        "output_len": 128,
-    })
+    resp = client.post(
+        ROUTE,
+        json={
+            "model_id": "Qwen/Qwen3-32B",
+            "input_len": 512,
+            "output_len": 128,
+        },
+    )
     assert resp.status_code == 200
     # Verify all 3 GPUs from GPU_SPECS were passed to recommender
     call_kwargs = mock_recommender_cls.call_args[1]

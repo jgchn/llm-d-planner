@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["capacity-planner"])
 # Shared helper
 # ---------------------------------------------------------------------------
 
+
 def _get_hf_token() -> str | None:
     return os.getenv("HF_TOKEN") or None
 
@@ -39,6 +40,7 @@ def _handle_hf_error(e: Exception) -> NoReturn:
 # ---------------------------------------------------------------------------
 # /model-info schemas
 # ---------------------------------------------------------------------------
+
 
 class ModelInfoRequest(BaseModel):
     model_config = {"protected_namespaces": ()}
@@ -103,6 +105,7 @@ class ModelInfoResponse(BaseModel):
 # /model-info handler
 # ---------------------------------------------------------------------------
 
+
 @router.post("/model-info")
 async def model_info(request: ModelInfoRequest) -> ModelInfoResponse:
     """Fetch model metadata from HuggingFace.
@@ -123,8 +126,10 @@ async def model_info(request: ModelInfoRequest) -> ModelInfoResponse:
         params_by_dtype = cp.model_params_by_dtype(request.model_id, hf_token)
     except Exception:
         params_by_dtype = {}
-    total_params = sum(params_by_dtype.values()) if params_by_dtype else cp.model_total_params(
-        request.model_id, hf_token
+    total_params = (
+        sum(params_by_dtype.values())
+        if params_by_dtype
+        else cp.model_total_params(request.model_id, hf_token)
     )
 
     memory_gb = cp.model_memory_req(request.model_id, model_config, hf_token)
@@ -177,13 +182,15 @@ async def model_info(request: ModelInfoRequest) -> ModelInfoResponse:
             q_dtype = quant_method_str
             q_bytes = quant_bytes_float
             mem_gb = cp.parameter_precision_memory_req(param_count, quant_bytes_float)
-        breakdown.append(MemoryBreakdownRow(
-            dtype=dtype,
-            quantized_dtype=q_dtype,
-            bytes_per_param=q_bytes,
-            num_parameters=param_count,
-            memory_gb=round(mem_gb, 2),
-        ))
+        breakdown.append(
+            MemoryBreakdownRow(
+                dtype=dtype,
+                quantized_dtype=q_dtype,
+                bytes_per_param=q_bytes,
+                num_parameters=param_count,
+                memory_gb=round(mem_gb, 2),
+            )
+        )
 
     return ModelInfoResponse(
         success=True,
@@ -228,6 +235,7 @@ async def model_info(request: ModelInfoRequest) -> ModelInfoResponse:
 # ---------------------------------------------------------------------------
 # /calculate schemas
 # ---------------------------------------------------------------------------
+
 
 class CalculateRequest(BaseModel):
     model_config = {"protected_namespaces": ()}
@@ -283,6 +291,7 @@ class CalculateResponse(BaseModel):
 # /calculate handler
 # ---------------------------------------------------------------------------
 
+
 @router.post("/calculate")
 async def calculate(request: CalculateRequest) -> CalculateResponse:
     """Run capacity planning calculations for a given model and hardware config."""
@@ -305,10 +314,13 @@ async def calculate(request: CalculateRequest) -> CalculateResponse:
                 detail="max_model_len=-1 requires gpu_memory to be specified for auto-calculation",
             )
         max_len = cp.auto_max_model_len(
-            request.model_id, model_config,
+            request.model_id,
+            model_config,
             gpu_memory=int(request.gpu_memory),
             gpu_mem_util=request.gpu_mem_util,
-            tp=request.tp, pp=request.pp, dp=request.dp,
+            tp=request.tp,
+            pp=request.pp,
+            dp=request.dp,
             hf_token=hf_token,
         )
         if max_len == 0:
@@ -371,35 +383,74 @@ async def calculate(request: CalculateRequest) -> CalculateResponse:
 
     if request.gpu_memory is not None:
         gpu_memory_int = int(request.gpu_memory)
-        input_params.update({
-            "tp": request.tp, "pp": request.pp, "dp": request.dp,
-            "gpu_mem_util": request.gpu_mem_util, "block_size": request.block_size,
-        })
+        input_params.update(
+            {
+                "tp": request.tp,
+                "pp": request.pp,
+                "dp": request.dp,
+                "gpu_mem_util": request.gpu_mem_util,
+                "block_size": request.block_size,
+            }
+        )
         response.per_gpu_model_memory_gb = round(
-            cp.per_gpu_model_memory_required(request.model_id, model_config, request.tp, request.pp, hf_token), 2
+            cp.per_gpu_model_memory_required(
+                request.model_id, model_config, request.tp, request.pp, hf_token
+            ),
+            2,
         )
         response.total_gpus_required = cp.gpus_required(request.tp, request.pp, request.dp)
         response.allocatable_kv_cache_memory_gb = round(
             cp.allocatable_kv_cache_memory(
-                request.model_id, model_config, gpu_memory_int, request.gpu_mem_util,
-                request.tp, request.pp, request.dp,
-                max_model_len=max_len, batch_size=request.batch_size, hf_token=hf_token,
-            ), 2
+                request.model_id,
+                model_config,
+                gpu_memory_int,
+                request.gpu_mem_util,
+                request.tp,
+                request.pp,
+                request.dp,
+                max_model_len=max_len,
+                batch_size=request.batch_size,
+                hf_token=hf_token,
+            ),
+            2,
         )
         response.max_concurrent_requests = cp.max_concurrent_requests(
-            request.model_id, model_config, max_len, gpu_memory_int,
-            request.gpu_mem_util, batch_size=request.batch_size,
-            tp=request.tp, pp=request.pp, dp=request.dp, hf_token=hf_token,
+            request.model_id,
+            model_config,
+            max_len,
+            gpu_memory_int,
+            request.gpu_mem_util,
+            batch_size=request.batch_size,
+            tp=request.tp,
+            pp=request.pp,
+            dp=request.dp,
+            hf_token=hf_token,
         )
-        response.total_kv_cache_blocks = int(cp.total_kv_cache_blocks(
-            request.model_id, model_config, max_len, gpu_memory_int,
-            request.gpu_mem_util, request.batch_size, request.block_size,
-            request.tp, request.pp, request.dp, hf_token=hf_token,
-        ))
-        response.activation_memory_gb = round(cp.estimate_vllm_activation_memory(model_config, tp=request.tp), 4)
+        response.total_kv_cache_blocks = int(
+            cp.total_kv_cache_blocks(
+                request.model_id,
+                model_config,
+                max_len,
+                gpu_memory_int,
+                request.gpu_mem_util,
+                request.batch_size,
+                request.block_size,
+                request.tp,
+                request.pp,
+                request.dp,
+                hf_token=hf_token,
+            )
+        )
+        response.activation_memory_gb = round(
+            cp.estimate_vllm_activation_memory(model_config, tp=request.tp), 4
+        )
         response.cuda_graph_memory_gb = round(cp.estimate_vllm_cuda_graph_memory(), 4)
         response.non_torch_memory_gb = round(cp.estimate_vllm_non_torch_memory(request.tp), 4)
-        response.model_memory_gb = round(cp.model_memory_req(request.model_id, model_config, hf_token), 2)
-        response.available_gpu_memory_gb = round(cp.available_gpu_memory(gpu_memory_int, request.gpu_mem_util), 2)
+        response.model_memory_gb = round(
+            cp.model_memory_req(request.model_id, model_config, hf_token), 2
+        )
+        response.available_gpu_memory_gb = round(
+            cp.available_gpu_memory(gpu_memory_int, request.gpu_mem_util), 2
+        )
 
     return response

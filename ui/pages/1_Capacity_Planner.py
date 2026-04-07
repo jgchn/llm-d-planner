@@ -48,7 +48,6 @@ def register_new_accelerator():
         st.rerun()
 
 
-
 def model_specification():
     """
     Get model inputs like model name, precision
@@ -105,7 +104,6 @@ def model_specification():
             st.dataframe(df_data, hide_index=True)
 
 
-
 def parallelism_specification():
     """
     Parallelism configuration
@@ -128,7 +126,9 @@ def parallelism_specification():
             "Tensor parallel size (shard model weights across GPUs)",
             key=util.SELECTED_TP_SIZE_KEY,
             options=possible_tp_sizes,
-            index=possible_tp_sizes.index(user_scenario.tp_size) if user_scenario.tp_size in possible_tp_sizes else 0,
+            index=possible_tp_sizes.index(user_scenario.tp_size)
+            if user_scenario.tp_size in possible_tp_sizes
+            else 0,
             help=f"Must be divisible by the number of attention heads (`{arch['num_attention_heads']}` for this model)",
             on_change=util.on_update_parallelism,
             args=[util.SELECTED_TP_SIZE_KEY, "tp_size"],
@@ -388,9 +388,7 @@ Runtime per-request activation buffers (which DO scale with actual sequence leng
 Activation memory = {base_constant} GB ({source_label})
 """)
 
-            st.info(
-                f"**Peak activation memory: {util.pretty_round(base_constant)} GB (constant)**"
-            )
+            st.info(f"**Peak activation memory: {util.pretty_round(base_constant)} GB (constant)**")
 
             st.write("""
 **Note on Tensor Parallelism (TP):**

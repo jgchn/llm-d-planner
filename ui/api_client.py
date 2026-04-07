@@ -241,7 +241,7 @@ def fetch_capacity_planner_calculate(
             return cast(dict[Any, Any], response.json())
         else:
             try:
-                error_detail = response.json().get('detail', response.text[:200])
+                error_detail = response.json().get("detail", response.text[:200])
             except Exception:
                 error_detail = response.text[:200]
             st.warning(f"Calculation error: {error_detail}")
@@ -297,7 +297,7 @@ def fetch_gpu_recommender_estimate(
             return cast(dict[Any, Any], response.json())
         else:
             try:
-                error_detail = response.json().get('detail', response.text[:200])
+                error_detail = response.json().get("detail", response.text[:200])
             except Exception:
                 error_detail = response.text[:200]
             st.error(f"Estimation error: {error_detail}")
