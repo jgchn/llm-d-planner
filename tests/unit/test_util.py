@@ -4,14 +4,14 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 # ui/ is not a package; add it to sys.path for direct import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ui"))
 
 # Streamlit initializes GUI state at import time; stub it out so util.py
 # can be imported in a headless unit-test environment.
 sys.modules.setdefault("streamlit", MagicMock())
-
-import pytest
 
 
 @pytest.mark.unit
