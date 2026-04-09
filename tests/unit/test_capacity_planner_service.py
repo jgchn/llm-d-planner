@@ -101,6 +101,7 @@ def test_get_model_info_summary_hf_error_propagates(mock_config):
 # calculate_capacity tests
 # ---------------------------------------------------------------------------
 
+
 def _mock_kv():
     kv = MagicMock()
     kv.attention_type = "Grouped-query attention"

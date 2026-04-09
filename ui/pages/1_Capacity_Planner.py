@@ -34,9 +34,9 @@ def _cached_calculate(
     parameters appear in multiple UI sections.
     """
     cache_key = (model_name, max_model_len, batch_size, gpu_memory, gpu_mem_util, tp, pp, dp)
-    cache: dict = st.session_state.setdefault("_calc_cache", {})
+    cache: dict[tuple, dict[str, Any]] = st.session_state.setdefault("_calc_cache", {})
     if cache_key not in cache:
-        cache[cache_key] = fetch_capacity_planner_calculate(
+        result: dict[str, Any] | None = fetch_capacity_planner_calculate(
             model_name,
             max_model_len=max_model_len,
             batch_size=batch_size,
@@ -46,6 +46,9 @@ def _cached_calculate(
             pp=pp,
             dp=dp,
         )
+        if result is not None:
+            cache[cache_key] = result
+        return result
     return cache[cache_key]
 
 

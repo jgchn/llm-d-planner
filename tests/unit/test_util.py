@@ -2,9 +2,14 @@
 
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # ui/ is not a package; add it to sys.path for direct import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ui"))
+
+# Streamlit initializes GUI state at import time; stub it out so util.py
+# can be imported in a headless unit-test environment.
+sys.modules.setdefault("streamlit", MagicMock())
 
 import pytest
 
@@ -24,9 +29,9 @@ def test_scenario_can_show_mem_util_chart_is_gone():
     """can_show_mem_util_chart() was dead code referencing model_config; must be removed."""
     from util import Scenario
 
-    assert not hasattr(Scenario, "can_show_mem_util_chart"), (
-        "can_show_mem_util_chart must be removed — it was dead code"
-    )
+    assert not hasattr(
+        Scenario, "can_show_mem_util_chart"
+    ), "can_show_mem_util_chart must be removed — it was dead code"
 
 
 @pytest.mark.unit

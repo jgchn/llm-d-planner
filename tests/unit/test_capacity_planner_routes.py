@@ -226,7 +226,12 @@ def test_calculate_invalid_tp(mock_calc):
 @pytest.mark.unit
 @patch(
     "planner.capacity_planner.calculate_capacity",
-    return_value={**_SAMPLE_CALC_NO_GPU, "warnings": ["Auto-calculated max_model_len is 64 tokens, which may be too small for practical use."]},
+    return_value={
+        **_SAMPLE_CALC_NO_GPU,
+        "warnings": [
+            "Auto-calculated max_model_len is 64 tokens, which may be too small for practical use."
+        ],
+    },
 )
 def test_calculate_auto_max_model_len_small_warning(mock_calc):
     resp = client.post(

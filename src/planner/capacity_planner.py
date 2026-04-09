@@ -1061,9 +1061,7 @@ def gib_to_bytes(gib: float) -> float:
     return gib * BYTES_PER_GIB
 
 
-def get_model_info_summary(
-    model_id: str, hf_token: str | None = None
-) -> dict[str, Any]:
+def get_model_info_summary(model_id: str, hf_token: str | None = None) -> dict[str, Any]:
     """Assemble full model metadata for the /model-info API endpoint.
 
     Fetches model config from HuggingFace and computes memory breakdown,
@@ -1089,9 +1087,7 @@ def get_model_info_summary(
     except Exception:
         params_by_dtype = {}
     total_params = (
-        sum(params_by_dtype.values())
-        if params_by_dtype
-        else model_total_params(model_id, hf_token)
+        sum(params_by_dtype.values()) if params_by_dtype else model_total_params(model_id, hf_token)
     )
 
     memory_gb = model_memory_req(model_id, model_config, hf_token)
@@ -1266,9 +1262,7 @@ def calculate_capacity(
     # Validate TP
     possible_tp = find_possible_tp(model_config)
     if tp not in possible_tp:
-        raise ValueError(
-            f"Invalid tp value {tp}. Valid values for this model: {possible_tp}"
-        )
+        raise ValueError(f"Invalid tp value {tp}. Valid values for this model: {possible_tp}")
 
     kv = KVCacheDetail(model_id, model_config, max_len, batch_size)
 
