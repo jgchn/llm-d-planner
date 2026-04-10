@@ -34,6 +34,7 @@ from planner.shared.schemas import (
 from planner.shared.utils import normalize_gpu_types
 
 from .analyzer import get_task_bonus
+from .estimator import generate_estimated_configs
 from .scorer import Scorer
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,9 @@ class ConfigFinder:
         near_miss_tolerance: float = 0.0,  # No near-miss tolerance
         weights: dict[str, int] | None = None,  # Custom weights for balanced score
         cluster_gpu_types: list[str] | None = None,
-    ) -> list[DeploymentRecommendation]:
+        preferred_models: list[str] | None = None,
+        enable_estimated: bool = True,
+    ) -> tuple[list[DeploymentRecommendation], list[str]]:
         """
         Plan GPU capacity and return ALL viable configurations meeting SLO.
 
@@ -165,9 +168,13 @@ class ConfigFinder:
             cluster_gpu_types: Detected GPU types from cluster (None = detection
                 not attempted, [] = no GPUs detected, non-empty = hard filter
                 intersected with user preferences)
+            preferred_models: User-specified model IDs to include via estimated
+                performance when no benchmark data exists
+            enable_estimated: Whether to run roofline estimation for models/GPUs
+                without benchmark data (default True)
 
         Returns:
-            List of DeploymentRecommendations with scores attached
+            Tuple of (list of DeploymentRecommendations with scores, list of warning messages)
         """
         scorer = Scorer()
         all_configs: list[DeploymentRecommendation] = []
@@ -206,7 +213,7 @@ class ConfigFinder:
                         "No overlap between cluster GPUs and user preference — "
                         "no configurations possible"
                     )
-                    return []
+                    return [], []
             else:
                 effective_gpus = sorted(cluster_gpu_types)
                 logger.info(f"Using cluster GPUs as filter: {effective_gpus}")
@@ -232,15 +239,29 @@ class ConfigFinder:
             min_qps=0,
             percentile=percentile,
             gpu_types=normalized_gpus if normalized_gpus else None,
+            exclude_estimated=not enable_estimated,
         )
 
-        # Fallback: if cluster-detected GPUs had no benchmark data, retry
+        # Fallback: if the GPU filter produced no benchmark data, retry
         # without GPU filter so the user still gets recommendations.
-        if not matching_configs and normalized_gpus and gpu_filter_from_cluster:
-            logger.warning(
-                f"No benchmarks found for cluster GPUs {normalized_gpus} — "
-                f"falling back to all available GPUs"
-            )
+        all_warnings: list[str] = []
+        gpu_fallback = False
+        if not matching_configs and normalized_gpus:
+            if gpu_filter_from_cluster:
+                msg = (
+                    f"No benchmarks found for cluster GPUs "
+                    f"({', '.join(normalized_gpus)}). "
+                    f"Showing other available GPU configurations."
+                )
+            else:
+                msg = (
+                    f"No configurations found for preferred GPUs "
+                    f"({', '.join(intent.preferred_gpu_types)}). "
+                    f"Showing other available GPU configurations."
+                )
+            logger.warning(msg)
+            all_warnings.append(msg)
+            gpu_fallback = True
             matching_configs = self.benchmark_repo.find_configurations_meeting_slo(
                 prompt_tokens=traffic_profile.prompt_tokens,
                 output_tokens=traffic_profile.output_tokens,
@@ -250,7 +271,50 @@ class ConfigFinder:
                 min_qps=0,
                 percentile=percentile,
                 gpu_types=None,
+                exclude_estimated=not enable_estimated,
             )
+
+        # Estimated performance flow: generate roofline estimates for
+        # preferred models (and optionally catalog models) that lack benchmark data.
+        if enable_estimated and preferred_models:
+            estimated_configs, estimation_warnings = generate_estimated_configs(
+                traffic_profile=traffic_profile,
+                slo_targets=slo_targets,
+                preferred_models=preferred_models,
+                existing_benchmarks=matching_configs,
+                gpu_types=normalized_gpus if normalized_gpus and not gpu_fallback else None,
+                catalog=self.catalog,
+                benchmark_repo=self.benchmark_repo,
+            )
+            all_warnings.extend(estimation_warnings)
+            if estimated_configs:
+                matching_configs.extend(estimated_configs)
+                logger.info(
+                    f"Added {len(estimated_configs)} estimated configurations from roofline model"
+                )
+
+        # When the user specified preferred models, filter results to only
+        # those models.  Fall back to all configs if none of the preferred
+        # models produced viable results.
+        if preferred_models:
+            preferred_set = {m.lower() for m in preferred_models}
+            preferred_configs = [
+                c for c in matching_configs if c.model_hf_repo.lower() in preferred_set
+            ]
+            if preferred_configs:
+                logger.info(
+                    f"Filtering to {len(preferred_configs)} configs for "
+                    f"preferred models (from {len(matching_configs)} total)"
+                )
+                matching_configs = preferred_configs
+            else:
+                model_list = ", ".join(preferred_models)
+                msg = (
+                    f"No configurations found for preferred models "
+                    f"({model_list}). Showing other available solutions."
+                )
+                logger.warning(msg)
+                all_warnings.append(msg)
 
         if not matching_configs:
             logger.warning(
@@ -258,7 +322,7 @@ class ConfigFinder:
                 f"({traffic_profile.prompt_tokens}→{traffic_profile.output_tokens})"
                 + (f" with GPUs {normalized_gpus}" if normalized_gpus else "")
             )
-            return []
+            return [], all_warnings
 
         # Build model lookup from catalog for scoring
         # Models not in catalog will get accuracy score = 0
@@ -338,6 +402,12 @@ class ConfigFinder:
 
             accuracy_score = int(raw_accuracy)
 
+            # Fallback: for models without accuracy benchmarks (e.g., estimated models),
+            # use parameter-count-based heuristic so they aren't filtered by min_accuracy
+            if accuracy_score == 0 and getattr(bench, "confidence_level", None) == "estimated":
+                model_size = model.size_parameters if model else bench.model_hf_repo
+                accuracy_score = scorer.score_accuracy_by_size(model_size)
+
             # Apply task-specific bonus to accuracy score
             # This boosts models that are well-suited for the specific use case
             task_bonus = get_task_bonus(model_name_for_scoring, intent.use_case)
@@ -374,6 +444,9 @@ class ConfigFinder:
                 else 0,
                 # Data validation flag: True = estimated/interpolated, False = real benchmark
                 "estimated": getattr(bench, "estimated", False),
+                # Classification fields for UI badges
+                "source": getattr(bench, "source", "other"),
+                "confidence_level": getattr(bench, "confidence_level", "benchmarked"),
             }
 
             # Build recommendation (price score calculated later after we know min/max)
@@ -409,7 +482,7 @@ class ConfigFinder:
 
         if not all_configs:
             logger.warning("No viable configurations found for any model")
-            return []
+            return [], all_warnings
 
         # Now calculate price scores (need min/max across all configs)
         costs = [rec.cost_per_month_usd for rec in all_configs if rec.cost_per_month_usd]
@@ -461,4 +534,4 @@ class ConfigFinder:
         logger.info(
             f"Found {len(all_configs)} viable configurations across {len(unique_models)} models"
         )
-        return all_configs
+        return all_configs, all_warnings

@@ -27,6 +27,8 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from planner.knowledge_base.loader import insert_benchmarks
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +36,13 @@ class BenchmarkData:
     """Model performance benchmark entry."""
 
     def __init__(self, data: dict):
-        """Initialize from database row dict."""
+        """Initialize from a database row or dict with benchmark fields.
+
+        Key fields beyond latency/throughput metrics:
+            estimated: True for roofline-estimated benchmarks (default False).
+            source: Benchmark tool/method, e.g. 'blis', 'llm-optimizer' (default 'other').
+            confidence_level: 'benchmarked' or 'estimated' (default 'estimated').
+        """
         self.model_hf_repo = data["model_hf_repo"]
         self.hardware = data["hardware"]
         self.hardware_count = data["hardware_count"]
@@ -81,6 +89,9 @@ class BenchmarkData:
         # Model artifact URI (e.g., OCI registry URI)
         self.model_uri = data.get("model_uri")
 
+        self.source = data.get("source", "other")
+        self.confidence_level = data.get("confidence_level", "estimated")
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -112,6 +123,9 @@ class BenchmarkData:
             "tokens_per_second": self.tokens_per_second,
             "requests_per_second": self.requests_per_second,
             "model_uri": self.model_uri,
+            "estimated": self.estimated,
+            "source": self.source,
+            "confidence_level": self.confidence_level,
         }
 
 
@@ -144,6 +158,40 @@ class BenchmarkRepository:
     def _get_connection(self):
         """Get a database connection."""
         return psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+
+    def save_benchmarks(
+        self,
+        benchmarks: list["BenchmarkData"],
+        source: str = "llm-optimizer",
+        confidence_level: str = "estimated",
+    ) -> None:
+        """Persist benchmark data to the database.
+
+        Args:
+            benchmarks: BenchmarkData objects to insert.
+            source: Data source identifier.
+            confidence_level: Trust level ('benchmarked' or 'estimated').
+
+        Raises:
+            Exception: If the DB write fails.
+        """
+        # Prepare data before opening connection to fail fast and keep
+        # the connection short-lived.
+        benchmark_dicts = [b.to_dict() for b in benchmarks]
+        for d in benchmark_dicts:
+            d.setdefault("prompt_tokens", d.get("mean_input_tokens"))
+            d.setdefault("output_tokens", d.get("mean_output_tokens"))
+
+        conn = self._get_connection()
+        try:
+            insert_benchmarks(
+                conn, benchmark_dicts, source=source, confidence_level=confidence_level
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def get_benchmark(
         self,
@@ -307,6 +355,7 @@ class BenchmarkRepository:
         min_qps: float = 0,
         percentile: str = "p95",
         gpu_types: list[str] | None = None,
+        exclude_estimated: bool = False,
     ) -> list[BenchmarkData]:
         """
         Find all configurations that meet SLO requirements for a traffic profile.
@@ -326,6 +375,7 @@ class BenchmarkRepository:
             min_qps: Minimum required QPS
             percentile: Which percentile column to use (mean, p90, p95, p99)
             gpu_types: Optional list of GPU types to filter by (normalized canonical names)
+            exclude_estimated: If True, exclude rows with confidence_level='estimated'
 
         Returns:
             List of benchmarks meeting all criteria (one per system configuration)
@@ -341,11 +391,15 @@ class BenchmarkRepository:
         itl_col = f"itl_{percentile}"
         e2e_col = f"e2e_{percentile}"
 
-        # Build optional GPU filter clause
+        # Build optional filter clauses
         gpu_filter = ""
         if gpu_types:
             gpu_filter = "AND hardware = ANY(%s)"
             logger.info(f"Filtering by GPU types: {gpu_types}")
+
+        estimated_filter = ""
+        if exclude_estimated:
+            estimated_filter = "AND confidence_level != 'estimated'"
 
         logger.info(
             f"Querying benchmarks with percentile={percentile} (columns: {ttft_col}, {itl_col}, {e2e_col})"
@@ -370,6 +424,7 @@ class BenchmarkRepository:
                   AND {e2e_col} <= %s
                   AND requests_per_second >= %s
                   {gpu_filter}
+                  {estimated_filter}
             )
             SELECT
                 id, config_id, model_hf_repo, provider, type,
@@ -380,7 +435,7 @@ class BenchmarkRepository:
                 hardware, hardware_count, framework, requests_per_second, tokens_per_second,
                 mean_input_tokens, mean_output_tokens,
                 prompt_tokens, output_tokens,
-                model_uri
+                model_uri, source, confidence_level
             FROM ranked_configs
             WHERE rn = 1
             ORDER BY model_hf_repo, hardware, hardware_count
