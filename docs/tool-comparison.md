@@ -43,25 +43,69 @@ gpu-calc handles the most diverse set of attention architectures, driven by its 
 
 ## 2. Weight Memory Formula
 
+All three tools call the HuggingFace API, but they use different fields and apply different formulas.
+
+### 2.1 HuggingFace Integration
+
+| Tool | HF API calls | What safetensors data is used for |
+|------|-------------|-----------------------------------|
+| **gpu-calc** | `GET /api/models/{id}` (single call) | `d.safetensors.total` = **pre-computed parameter count** → determines `params` |
+| **vllm_config_estimator** | `config.json` download + `list_repo_files()` + `get_hf_file_metadata()` per file | Actual **byte sizes** of safetensor files → used only for **precision inference** |
+| **llm-d-planner** | `config.json` via AutoConfig + safetensor file sizes | Actual **byte sizes** used directly as **weight memory** |
+
+### 2.2 Parameter Count Determination
+
+**gpu-calc** (`index.html:3192-3195`) — three-tier fallback:
+```javascript
+var params = d.safetensors && d.safetensors.total
+    ? d.safetensors.total / 1e9              // HF pre-computed param count
+    : cfg.num_parameters
+        ? cfg.num_parameters / 1e9           // config.json field
+        : 12 * num_hidden_layers * hidden_size² / 1e9; // architectural formula
+params = Math.max(1, Math.round(params));
+```
+
+**vllm_config_estimator** (`vllm_start_config_from_estimate.py:324-392`) — four-tier fallback:
+```python
+# 1. Regex on model name: "Llama-3.1-70B" → 70
+# 2. config["num_parameters"] / 1e9
+# 3. Architectural calculation from config.json fields:
+total_params = attention_params + ffn_params + embedding_params
+# where:
+#   attention_params = num_layers × (h×Q + h×K×2 + h×V)
+#   ffn_params       = num_layers × (h×i×2 + i×h) × num_experts  # SwiGLU
+#   embedding_params = vocab_size × hidden_size × (2 if not tied else 1)
+```
+
+The actual safetensor file byte sizes are fetched (`common.py:254-307`) but used only to infer precision:
+```python
+bytes_per_param = total_safetensor_bytes / total_params
+# ≤1.3 → fp8,  ≤2.5 → bf16,  ≤4.5 → fp32
+```
+
+**llm-d-planner** — does not compute parameter count for weight memory at all; reads safetensor file sizes directly as the answer (`capacity_planner.py:553-597`).
+
+### 2.3 Weight Memory Formula
+
 ```
 weight_memory = parameter_count × bytes_per_parameter × overhead_factor
 ```
 
 | Precision | gpu-calc | vllm_config_estimator | llm-d-planner |
 |-----------|----------|----------------------|---------------|
-| FP16/BF16 | 2.0 B/param | 2.0 B/param | From safetensors |
-| FP8/INT8 | 1.0 B/param | 1.0 B/param | From safetensors |
-| INT4/FP4 | 0.5 B/param | 0.5 B/param | From safetensors |
+| FP16/BF16 | 2.0 B/param | 2.0 B/param | Exact file size |
+| FP8/INT8 | 1.0 B/param | 1.0 B/param | Exact file size |
+| INT4/FP4 | 0.5 B/param | 0.5 B/param | Exact file size |
 
 **Overhead factors:**
 
 | Tool | Overhead | Rationale |
 |------|----------|-----------|
 | **vllm_config_estimator** | **1.15× (15%)** | Framework buffers, alignment, loader overhead |
-| **gpu-calc** | **None (1.0×)** | Accounted for in separate 8% overhead term |
-| **llm-d-planner** | **None** | Uses exact safetensors file sizes; separate activation/non-torch constants |
+| **gpu-calc** | **None (1.0×)** | Accounted for in a separate per-GPU term: `max(0.5 GB, vram × 0.08)` |
+| **llm-d-planner** | **None** | File sizes are exact; overhead is tracked separately as empirical activation + non-torch constants |
 
-**Key difference:** vllm_config_estimator folds all overhead into a single weight multiplier. gpu-calc separates weights and a flat overhead term (`max(0.5GB, vram × 0.08)`). llm-d-planner is the most precise — it reads exact byte counts from HuggingFace safetensor metadata and uses empirically validated per-architecture activation constants.
+**Key difference:** gpu-calc and vllm_config_estimator both ultimately use `params × bytes_per_param`, differing only in how they derive `params` and whether they apply an overhead multiplier. llm-d-planner bypasses the formula entirely — safetensor file sizes sum to the actual weight memory, automatically capturing tied embeddings, quantized layers, sparse weight patterns, and any other deviation from the naive `params × bytes` estimate.
 
 ---
 
@@ -128,6 +172,110 @@ decode_flops = single_token_forward_pass_flops + attention_over_kv_context_flops
 - Decode MFU: **0.30**
 
 llm-d-planner prefers real benchmark data (BLIS) over roofline, falling back to roofline only for models not in the database.
+
+### TPP Heuristic in gpu-calc
+
+gpu-calc does not use a roofline model. Instead it uses a manually calibrated **Throughput Planning Index (TPP)** — a memory-bandwidth proxy (`index.html:2264`):
+
+```javascript
+// tpp = Planning Throughput Index — heuristic derived from mem_bw + VRAM, for comparative planning only
+{name:'A100 40GB', vram:40,  mem_bw:1.6,  tpp:6000}
+{name:'A100 80GB', vram:80,  mem_bw:2.0,  tpp:10500}
+{name:'H100',      vram:80,  mem_bw:3.35, tpp:18000}
+{name:'H200',      vram:141, mem_bw:4.8,  tpp:25000}
+{name:'B200',      vram:180, mem_bw:8.0,  tpp:40000}
+{name:'B300',      vram:288, mem_bw:15.0, tpp:60000}
+{name:'MI300X',    vram:192, mem_bw:5.3,  tpp:22000}
+```
+
+TPP values are hardcoded — not computed from a formula. They correlate with memory bandwidth but include manual adjustments for architectural efficiency (e.g., H20 has 4.0 TB/s bandwidth but only TPP=7000 due to an unfavorable compute/memory ratio).
+
+**Conceptually, TPP is a simplified roofline with the compute-bound branch dropped.** LLM decode is almost always memory-bandwidth-bound: each generated token requires loading the full model weight matrix from HBM once, so:
+
+```
+tokens/sec ∝ memory_bandwidth / model_size_bytes
+```
+
+TPP captures the numerator (bandwidth capacity). Model-size scale factors approximate the denominator (`index.html:4779-4782`):
+
+```javascript
+estimatedTokS = baseTokS × {≤10B: 0.17, ≤30B: 0.083, ≤80B: 0.044, >80B: 0.022}
+```
+
+For example: H100 (TPP=18000) serving a 70B model → `18000 × 0.044 ≈ 792 tok/s`. This breaks down for large prefill batches (compute-bound) or MoE models (only active expert weights are loaded per token).
+
+TPP is also used for cost efficiency ranking: `usdPerTpp = price / tpp`, and is the Y-axis in the GPU Explorer bubble chart.
+
+### Three-Profile System in vllm_config_estimator
+
+vllm_config_estimator generates three candidate configurations — **latency**, **balanced**, **throughput** — from a single roofline analysis pass. The roofline runs once and is shared; what differs between profiles is how vLLM's scheduler is configured.
+
+#### Core Idea
+
+The roofline model (`performance.py`) produces one set of theoretical metrics (TTFT, ITL, TPS ceiling). The three profiles are then generated by applying different heuristics to that shared baseline — each is a different bet on how to configure vLLM's scheduler for a given workload shape.
+
+#### Dimension 1: Parallelism Topology (TP × PP × DP)
+
+Given N total GPUs, the code enumerates all valid `(TP, PP, DP)` tuples where `TP × PP × DP = N`, then sorts differently per profile (`vllm_start_config_from_estimate.py:617-690`):
+
+```python
+# Latency: maximize TP first — shard within-node, minimize per-token latency
+valid_topologies.sort(key=lambda x: (x[0], x[1]), reverse=True)
+return valid_topologies[0]
+
+# Throughput: maximize DP first — independent replicas serve more concurrent requests
+valid_topologies.sort(key=lambda x: (x[2], x[0]), reverse=True)
+return valid_topologies[0]
+
+# Balanced: sort by (DP, TP) ascending, pick the median element
+valid_topologies.sort(key=lambda x: (x[2], x[0]))
+return valid_topologies[len(valid_topologies) // 2]
+```
+
+On 8 GPUs with a model that fits on 2: latency picks `TP=8, DP=1` (one maximally sharded replica), throughput picks `TP=2, DP=4` (four independent replicas), balanced picks the middle topology.
+
+#### Dimension 2: Scheduler Parameters
+
+Every scheduling knob is scaled from a GPU-class baseline (`vllm_start_config_from_estimate.py:761-930`):
+
+| Parameter | Latency | Balanced | Throughput |
+|---|---|---|---|
+| `gpu_memory_utilization` | base − 0.02 (0.88–0.90) | base (0.90–0.92) | base + 0.03 (0.93–0.95) |
+| `max_num_seqs` | base × 0.5 | base | base × 1.5 |
+| `max_num_batched_tokens` | base × 0.5 (min 512) | base | base × 2 (max 8192) |
+| `stream_interval` (tokens) | 1 | 5 | 10 |
+| `max_num_partial_prefills` | (2, 1) | (4, 1) | (8, 2) |
+| `async_scheduling` (≥v0.10) | False | True | True |
+
+Base values are GPU-class dependent: 80GB+ → `max_num_seqs=64`, `max_num_batched_tokens=4096`; 48GB → 48/2048; smaller → 24/1024.
+
+**The scheduling logic:** Latency halves `max_num_seqs` to reduce queueing, uses smaller `max_num_batched_tokens` so prefill finishes faster, streams each token immediately (`stream_interval=1`), and disables async scheduling to protect TTFT. Throughput doubles batch tokens to fill the GPU with large prefill batches, packs more sequences in, and batches streaming output. Balanced takes the midpoint of each.
+
+#### Dimension 3: KV Cache Budget (indirect)
+
+`gpu_memory_utilization` differences mean each profile allocates different KV cache headroom:
+
+```
+kv_cache_budget = (vram × gpu_memory_utilization) − weight_memory
+```
+
+Latency leaves more headroom (fewer evictions under burst). Throughput pushes utilization higher to fit more concurrent sequences' KV tensors, maximizing batching.
+
+#### What the Roofline Contributes
+
+The single roofline pass feeds into validation (checks whether proposed `max_num_seqs` is physically reachable) and the `guidellm` benchmark command with profile-appropriate rate targets:
+
+- Latency: `--rate-type concurrency --rate 1,2,4,8,16`
+- Throughput: `--rate-type throughput --rate 2.0,4.0,8.0,16.0,32.0`
+- Balanced: `--rate-type concurrency --rate 1,8,32,64,128`
+
+#### In One Sentence Each
+
+**Latency:** One fat replica with maximum tensor parallelism, a small scheduler window, and conservative memory usage — optimized for p95 TTFT on single requests.
+
+**Throughput:** Many lean replicas with maximum data parallelism, large batch windows, and aggressive memory usage — optimized for tokens/sec under high concurrency.
+
+**Balanced:** The median topology and midpoint scheduler settings — hedges between the two extremes without committing to either workload shape.
 
 ---
 
