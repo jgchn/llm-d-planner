@@ -1,0 +1,6 @@
+[submodule "vendor/vllm_config_estimator"]
+	path = vendor/vllm_config_estimator
+	url = https://github.com/jhurlocker/vllm_config_estimator
+[submodule "vendor/gpu-calc"]
+	path = vendor/gpu-calc
+	url = https://github.com/nb-qbits/gpu-calc
