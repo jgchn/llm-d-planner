@@ -1,0 +1,4 @@
+{
+  "skipped": true,
+  "reason": "--quantization=awq flag conflicts with pre-quantized w4a16 model (exit 1). Models auto-detect quantization; explicit flag fails in vLLM v0.19.0."
+}

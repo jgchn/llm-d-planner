@@ -1,0 +1,4 @@
+{
+  "skipped": true,
+  "reason": "tp=3 invalid: Llama-3.1-8B has 32 attention heads; 32 is not divisible by 3. vLLM validation error: 'Total number of attention heads (32) must be divisible by tensor parallel size (3)'. Valid tp values must be divisors of num_attention_heads."
+}

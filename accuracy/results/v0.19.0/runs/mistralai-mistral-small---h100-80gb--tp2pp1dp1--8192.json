@@ -1,0 +1,25 @@
+{
+  "model": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 2,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "auto",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-20T22:59:31.846151+00:00",
+  "log_path": "/data/results/v0.19.0/logs/mistralai-mistral-small---h100-80gb--tp2pp1dp1--8192.log",
+  "weight_memory_gib": 22.8,
+  "kv_cache_memory_gib": 48.33,
+  "cuda_graph_memory_gib": 0.81,
+  "max_concurrency": 77.32,
+  "kv_cache_tokens": 633408,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "kv_cache_blocks": 39588,
+  "kv_block_size_bytes": 1310850
+}

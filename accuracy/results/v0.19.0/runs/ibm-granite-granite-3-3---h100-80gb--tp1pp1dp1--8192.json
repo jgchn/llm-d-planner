@@ -1,0 +1,25 @@
+{
+  "model": "ibm-granite/granite-3.3-8b-instruct",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "auto",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-20T21:43:40.918313+00:00",
+  "log_path": "/data/results/v0.19.0/logs/ibm-granite-granite-3-3---h100-80gb--tp1pp1dp1--8192.log",
+  "weight_memory_gib": 15.25,
+  "kv_cache_memory_gib": 58.66,
+  "cuda_graph_memory_gib": 0.74,
+  "max_concurrency": 46.93,
+  "kv_cache_tokens": 384432,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "kv_cache_blocks": 24027,
+  "kv_block_size_bytes": 2621454
+}

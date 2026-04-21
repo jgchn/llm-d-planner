@@ -1,0 +1,4 @@
+{
+  "skipped": true,
+  "reason": "--quantization=fp8 flag conflicts with pre-quantized w8a8 model (exit 1). Models auto-detect quantization; explicit flag fails in vLLM v0.19.0."
+}

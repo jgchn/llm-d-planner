@@ -1,0 +1,26 @@
+{
+  "model": "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w8a8",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "float16",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-21T03:07:10.014434+00:00",
+  "log_path": "/data/results/v0.19.0/logs/redhatai-llama-3-1--h100-80gb--tp1pp1dp1--8192-dtf16.log",
+  "weight_memory_gib": 8.49,
+  "kv_cache_memory_gib": 64.6,
+  "cuda_graph_memory_gib": 0.84,
+  "max_concurrency": 64.6,
+  "kv_cache_tokens": 529184,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "kv_cache_blocks": 33074,
+  "kv_block_size_bytes": 2097228,
+  "_sweep_dim": "quantization"
+}

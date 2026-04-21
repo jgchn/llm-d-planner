@@ -1,0 +1,26 @@
+{
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "float32",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-21T18:07:52.308611+00:00",
+  "log_path": "/data/results/v0.19.0/logs/meta-llama-llama-3--h100-80gb--tp1pp1dp1--8192-dtf32.log",
+  "weight_memory_gib": 29.98,
+  "kv_cache_memory_gib": 42.8,
+  "cuda_graph_memory_gib": 0.8,
+  "max_concurrency": 21.4,
+  "kv_cache_tokens": 175296,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "kv_cache_blocks": 10956,
+  "kv_block_size_bytes": 4194610,
+  "_sweep_dim": "dtype"
+}

@@ -1,0 +1,25 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 2,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "auto",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-20T21:00:48.360905+00:00",
+  "log_path": "/data/results/v0.19.0/logs/qwen-qwen2-5-7b-instruct--h100-80gb--tp2pp1dp1--8192.log",
+  "weight_memory_gib": 7.12,
+  "kv_cache_memory_gib": 63.84,
+  "cuda_graph_memory_gib": 0.61,
+  "max_concurrency": 291.82,
+  "kv_cache_tokens": 2390592,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "kv_cache_blocks": 149412,
+  "kv_block_size_bytes": 458782
+}

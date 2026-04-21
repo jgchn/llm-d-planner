@@ -1,0 +1,123 @@
+# Canonical run matrix for the vLLM memory validation campaign.
+# Edit defaults.node_selector to match your cluster's GPU node label.
+# Run `kubectl get nodes --show-labels` to find the right label.
+defaults:
+  gpu: H100-80GB
+  gpu_memory_utilization: "0.95"
+  max_model_len: 8192
+  pp: 1
+  dp: 1
+  dtype: auto
+  kv_cache_dtype: auto
+  quantization: null
+  vllm_image: vllm/vllm-openai:v0.19.0
+  namespace: llmdplanner
+  results_pvc: vllm-mem-data
+  node_selector:
+    # CHANGE THIS to match your cluster's GPU node label.
+    # Example alternatives:
+    #   nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+    #   cloud.google.com/gke-accelerator: nvidia-h100-80gb
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+runs:
+  # ── Kimi models (moonshotai) ──────────────────────────────────────────────
+  - model: moonshotai/Kimi-VL-A3B-Instruct  # 16B total, 3B active MoE, vision-language; num_attention_heads=16
+    tp: [1, 2]
+    trust_remote_code: true
+
+  # Kimi-K2-Instruct (1T) and Kimi-K2.6 (1.1T) removed — OOM on 8x H100 80GB (~640 GB < ~1 TB weights in FP8)
+
+  - model: moonshotai/Kimi-Dev-72B          # 72B dense, Qwen2 architecture; num_attention_heads=64
+    tp: [2, 4]                              # tp=8 skipped — no 8-GPU nodes available
+    trust_remote_code: true
+
+  # ── Argument sensitivity: data parallelism ────────────────────────────────
+  - model: meta-llama/Llama-3.1-8B-Instruct
+    tp: 1
+    dp: [1, 2]
+    _sweep_dim: dp
+
+  # ── Argument sensitivity: --dtype ─────────────────────────────────────────
+  # Hold kv_cache_dtype fixed to avoid confounding KV cache precision.
+  # float32 is included to quantify the known planner gap: the planner reads
+  # the safetensors storage dtype (bf16) and never consults the --dtype flag,
+  # so fp32 will cause ~2× weight under-prediction and inflated KV estimate.
+  - model: meta-llama/Llama-3.1-8B-Instruct
+    tp: 1
+    dtype: [float16, bfloat16, float32]
+    kv_cache_dtype: auto
+    _sweep_dim: dtype
+
+  # ── Argument sensitivity: --quantization ──────────────────────────────────
+  - model: meta-llama/Llama-3.1-8B-Instruct   # FP16 baseline (no quantization)
+    tp: 1
+    dtype: float16
+    kv_cache_dtype: auto
+    quantization: null
+    _sweep_dim: quantization
+
+  - model: RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w8a8   # FP8 weights (compressed-tensors format, auto-detected)
+    tp: 1
+    dtype: float16
+    kv_cache_dtype: auto
+    quantization: null
+    _label: w8a8-redhatai-llama-3-1-8b
+    _sweep_dim: quantization
+
+  - model: RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16  # INT4 weights (compressed-tensors format, auto-detected)
+    tp: 1
+    dtype: float16
+    kv_cache_dtype: auto
+    quantization: null
+    _label: w4a16-redhatai-llama-3-1-8b
+    _sweep_dim: quantization
+
+  # ── Extended quantization coverage ───────────────────────────────────────
+  # Medium model (24B) w8a8: maps out where the activation-constant error becomes
+  # significant — between 8B (error negligible) and 70B (error dominant at TP=1).
+  - model: RedHatAI/Mistral-Small-3.1-24B-Instruct-2503-quantized.w8a8
+    tp: [1, 2]
+    _label: w8a8-mistral-small-24b
+    _sweep_dim: quantization
+
+  # Large model fp8-dynamic: tests a different quantization format from w8a8.
+  # fp8 weights are 1 byte/param but activations may differ from int8.
+  # TP=1 skipped — ~65 GiB fp8 weights + overhead leaves <5 GiB KV on a single H100.
+  - model: RedHatAI/Llama-3.3-70B-Instruct-fp8-dynamic
+    tp: [2, 4]
+    _label: fp8dyn-llama-3-3-70b
+    _sweep_dim: quantization
+
+  # Qwen2.5-7B quantized: compare against existing unquantized Qwen2.5-7B baseline.
+  # Both formats on the same small model isolate quantization effect from size/arch.
+  - model: RedHatAI/Qwen2.5-7B-Instruct-quantized.w8a8
+    tp: 1
+    _label: w8a8-redhatai-qwen2-5-7b
+    _sweep_dim: quantization
+
+  - model: RedHatAI/Qwen2.5-7B-Instruct-fp8-dynamic
+    tp: 1
+    _label: fp8dyn-redhatai-qwen2-5-7b
+    _sweep_dim: quantization
+
+  # ── Argument sensitivity: --kv-cache-dtype ────────────────────────────────
+  # FP8 KV cache halves per-token bytes → GPU block count should ~2×.
+  # FP8 KV cache requires bfloat16 compute dtype in vLLM v0.19.0
+  - model: meta-llama/Llama-3.1-8B-Instruct
+    tp: 1
+    dtype: bfloat16
+    kv_cache_dtype: [auto, fp8]
+    _sweep_dim: kv_cache_dtype
+
+  - model: Qwen/Qwen2.5-7B-Instruct
+    tp: 1
+    dtype: bfloat16
+    kv_cache_dtype: [auto, fp8]
+    _sweep_dim: kv_cache_dtype
+
+  # ── Argument sensitivity: non-power-of-2 tp ──────────────────────────────
+  # Qwen3-14B: num_attention_heads=40, so tp=5 is valid (40 % 5 == 0).
+  - model: Qwen/Qwen3-14B
+    tp: 5
+    _sweep_dim: tp_odd
