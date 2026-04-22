@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-20T23:28:07.659664+00:00",
+  "timestamp": "2026-04-22T00:06:48.447416+00:00",
   "log_path": "/data/results/v0.19.0/logs/meta-llama-llama-3--h100-80gb--tp1pp1dp1--8192-dtf16.log",
   "weight_memory_gib": 14.99,
   "kv_cache_memory_gib": 58.11,
@@ -22,5 +22,5 @@
   "vllm_commit": null,
   "kv_cache_blocks": 29751,
   "kv_block_size_bytes": 2097245,
-  "_sweep_dim": "kv_cache_dtype"
+  "_sweep_dim": "dtype"
 }

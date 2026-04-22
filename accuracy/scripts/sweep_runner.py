@@ -126,6 +126,7 @@ def _build_job_manifest(run_id: str, run: dict[str, Any]) -> dict[str, Any]:
                             {"name": "XDG_CACHE_HOME", "value": "/data/.cache"},
                             {"name": "FLASHINFER_WORKSPACE_DIR", "value": "/data/.cache/flashinfer"},
                             {"name": "VLLM_ATTENTION_BACKEND", "value": "FLASH_ATTN"},
+                            {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
                         ],
                         "resources": {
                             "limits": {"nvidia.com/gpu": num_gpus},
@@ -156,6 +157,13 @@ def _submit_sub_job(batch_api: Any, run_id: str, run: dict[str, Any]) -> None:
     print(f"  Submitted: vllm-mem-{run_id}", flush=True)
 
 
+class PodFailedError(RuntimeError):
+    """Raised when a vLLM pod terminates with a non-zero exit or phase=Failed."""
+    def __init__(self, pod_name: str, message: str) -> None:
+        super().__init__(message)
+        self.pod_name = pod_name
+
+
 def _wait_for_pod_ready(core_api: Any, run_id: str, namespace: str,
                         timeout: int = 2400) -> str:
     """Block until the pod's startupProbe passes. Returns the pod name."""
@@ -168,29 +176,47 @@ def _wait_for_pod_ready(core_api: Any, run_id: str, namespace: str,
                           label_selector=label_sel,
                           timeout_seconds=timeout):
         pod = event["object"]
+        pod_name = pod.metadata.name
         # Detect terminal failure immediately rather than waiting for timeout
         if pod.status.phase == "Failed":
             w.stop()
-            raise RuntimeError(f"Pod {pod.metadata.name} failed (phase=Failed)")
+            raise PodFailedError(pod_name, f"Pod {pod_name} failed (phase=Failed)")
         if pod.status.container_statuses:
             for cs in pod.status.container_statuses:
                 if cs.ready:
                     w.stop()
-                    print(f"  Pod ready: {pod.metadata.name}", flush=True)
-                    return pod.metadata.name
+                    print(f"  Pod ready: {pod_name}", flush=True)
+                    return pod_name
                 # Terminated with non-zero exit = OOM or crash
                 if cs.state and cs.state.terminated and cs.state.terminated.exit_code != 0:
                     w.stop()
                     reason = cs.state.terminated.reason or "unknown"
-                    raise RuntimeError(
-                        f"Pod {pod.metadata.name} terminated: {reason} "
+                    raise PodFailedError(
+                        pod_name,
+                        f"Pod {pod_name} terminated: {reason} "
                         f"(exit {cs.state.terminated.exit_code})"
                     )
     raise TimeoutError(f"Pod for run-id={run_id} did not become ready within {timeout}s")
 
 
-def _fetch_pod_log(core_api: Any, pod_name: str, namespace: str) -> str:
-    return core_api.read_namespaced_pod_log(name=pod_name, namespace=namespace)
+def _fetch_pod_log(core_api: Any, pod_name: str, namespace: str,
+                   previous: bool = False) -> str:
+    return core_api.read_namespaced_pod_log(
+        name=pod_name, namespace=namespace, previous=previous
+    )
+
+
+def _cleanup_stale_job(batch_api: Any, run_id: str, namespace: str) -> None:
+    """Delete a leftover job from a previous crashed sweep before re-submitting."""
+    from kubernetes import client
+    try:
+        batch_api.delete_namespaced_job(
+            name=f"vllm-mem-{run_id}", namespace=namespace,
+            body=client.V1DeleteOptions(propagation_policy="Background"),
+        )
+        print("  Cleaned up stale job before submit.", flush=True)
+    except Exception:
+        pass  # Job doesn't exist — expected on first run
 
 
 def _delete_job(batch_api: Any, run_id: str, namespace: str) -> None:
@@ -220,6 +246,9 @@ def run_sweep(runs: list[dict[str, Any]], results_dir: Path) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
+    successes = 0
+    failures = 0
+
     for i, run in enumerate(runs, 1):
         run_id = make_run_id(run)
         json_path = runs_dir / f"{run_id}.json"
@@ -240,8 +269,8 @@ def run_sweep(runs: list[dict[str, Any]], results_dir: Path) -> None:
                 print("  Skipping — result already exists.", flush=True)
                 continue
 
-        pod_name_on_fail: str | None = None
         try:
+            _cleanup_stale_job(batch_api, run_id, namespace)
             _submit_sub_job(batch_api, run_id, run)
             pod_name = _wait_for_pod_ready(core_api, run_id, namespace)
             log_text = _fetch_pod_log(core_api, pod_name, namespace)
@@ -249,19 +278,34 @@ def run_sweep(runs: list[dict[str, Any]], results_dir: Path) -> None:
             print(f"  Log saved: {log_path}", flush=True)
         except Exception as e:
             print(f"  Run failed: {e}", flush=True)
-            # Try to save failure log so the error is visible after pod deletion
+            # Save failure log before the job is deleted in the finally block.
+            # PodFailedError carries the pod name directly; other failures
+            # (e.g. TimeoutError) require a pod list to find it.
             try:
-                pods = core_api.list_namespaced_pod(
-                    namespace=namespace, label_selector=f"run-id={run_id}"
-                )
-                if pods.items:
-                    fail_pod = pods.items[0].metadata.name
-                    fail_log = _fetch_pod_log(core_api, fail_pod, namespace)
+                if isinstance(e, PodFailedError):
+                    fail_pod = e.pod_name
+                else:
+                    pods = core_api.list_namespaced_pod(
+                        namespace=namespace, label_selector=f"run-id={run_id}"
+                    )
+                    fail_pod = pods.items[0].metadata.name if pods.items else None
+                if fail_pod:
+                    # For terminated containers use previous=True to get the
+                    # crashed container's output rather than an empty current log.
+                    terminated = isinstance(e, PodFailedError)
+                    try:
+                        fail_log = _fetch_pod_log(core_api, fail_pod, namespace,
+                                                  previous=terminated)
+                    except Exception:
+                        fail_log = _fetch_pod_log(core_api, fail_pod, namespace)
                     fail_path = logs_dir / f"{run_id}.FAILED.log"
                     fail_path.write_text(fail_log)
                     print(f"  Failure log saved: {fail_path}", flush=True)
+                else:
+                    print("  No pod found — failure log unavailable.", flush=True)
             except Exception as log_err:
                 print(f"  Could not save failure log: {log_err}", flush=True)
+            failures += 1
             continue
         finally:
             try:
@@ -271,35 +315,41 @@ def run_sweep(runs: list[dict[str, Any]], results_dir: Path) -> None:
 
         try:
             parsed = pl.parse(log_path)
-        except ValueError as e:
+        except Exception as e:
             print(f"  Parse failed: {e}", flush=True)
+            failures += 1
             continue
 
-        record = {
-            "model": run["model"],
-            "gpu": run["gpu"],
-            "vllm_args": {
-                "tensor_parallel_size": run["tp"],
-                "pipeline_parallel_size": run["pp"],
-                "data_parallel_size": run["dp"],
-                "max_model_len": run["max_model_len"],
-                "gpu_memory_utilization": float(run["gpu_memory_utilization"]),
-                "dtype": run.get("dtype", "auto"),
-                "quantization": run.get("quantization"),
-                "kv_cache_dtype": run.get("kv_cache_dtype", "auto"),
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "log_path": str(log_path),
-            **parsed,
-            # planner_predicted and error_pct are added in a separate calibration step
-        }
-        if "_sweep_dim" in run:
-            record["_sweep_dim"] = run["_sweep_dim"]
+        try:
+            record = {
+                "model": run["model"],
+                "gpu": run["gpu"],
+                "vllm_args": {
+                    "tensor_parallel_size": run["tp"],
+                    "pipeline_parallel_size": run["pp"],
+                    "data_parallel_size": run["dp"],
+                    "max_model_len": run["max_model_len"],
+                    "gpu_memory_utilization": float(run["gpu_memory_utilization"]),
+                    "dtype": run.get("dtype", "auto"),
+                    "quantization": run.get("quantization"),
+                    "kv_cache_dtype": run.get("kv_cache_dtype", "auto"),
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "log_path": str(log_path),
+                **parsed,
+                # planner_predicted and error_pct are added in a separate calibration step
+            }
+            if "_sweep_dim" in run:
+                record["_sweep_dim"] = run["_sweep_dim"]
 
-        json_path.write_text(json.dumps(record, indent=2))
-        print(f"  JSON saved: {json_path}", flush=True)
+            json_path.write_text(json.dumps(record, indent=2))
+            print(f"  JSON saved: {json_path}", flush=True)
+            successes += 1
+        except Exception as e:
+            print(f"  Failed to save result: {e}", flush=True)
+            failures += 1
 
-    print(f"\nSweep complete. Results in {results_dir}", flush=True)
+    print(f"\nSweep complete. {successes} succeeded, {failures} failed. Results in {results_dir}", flush=True)
 
 
 # ── Version extraction ────────────────────────────────────────────────────────

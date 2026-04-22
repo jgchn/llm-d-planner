@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-20T20:59:20.411713+00:00",
+  "timestamp": "2026-04-22T01:01:08.222412+00:00",
   "log_path": "/data/results/v0.19.0/logs/qwen-qwen2-5-7b-instruct--h100-80gb--tp1pp1dp1--8192.log",
   "weight_memory_gib": 14.25,
   "kv_cache_memory_gib": 58.53,

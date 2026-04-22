@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-20T23:11:06.507606+00:00",
+  "timestamp": "2026-04-22T01:44:37.009107+00:00",
   "log_path": "/data/results/v0.19.0/logs/meta-llama-llama-3-1-8b---h100-80gb--tp1pp4dp1--8192.log",
   "weight_memory_gib": 4.26,
   "kv_cache_memory_gib": 69.8,

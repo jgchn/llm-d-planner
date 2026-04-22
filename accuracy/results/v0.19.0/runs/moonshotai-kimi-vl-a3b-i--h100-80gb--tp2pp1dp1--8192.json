@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-21T02:13:58.377110+00:00",
+  "timestamp": "2026-04-21T23:59:03.386999+00:00",
   "log_path": "/data/results/v0.19.0/logs/moonshotai-kimi-vl-a3b-i--h100-80gb--tp2pp1dp1--8192.log",
   "weight_memory_gib": 15.53,
   "kv_cache_memory_gib": 54.78,

@@ -37,6 +37,17 @@ _OPT_STR_PATTERNS: dict[str, str] = {
     "vllm_commit":  r"\(commit:\s*([0-9a-f]+)\)",
 }
 
+# vLLM v0.19 memory profiling line (optional — only present in DEBUG logs).
+# Multiple workers emit identical values; we take the first match.
+# Example: "Total non KV cache memory: 17.12GiB; torch peak memory increase: 1.89GiB;
+#           non-torch forward increase memory: 0.25GiB; weights memory: 14.99GiB."
+_PROFILING_PATTERN = re.compile(
+    r"Total non KV cache memory:\s*([\d.]+)GiB;"
+    r"\s*torch peak memory increase:\s*([\d.]+)GiB;"
+    r"\s*non-torch forward increase memory:\s*([\d.]+)GiB;"
+    r"\s*weights memory:\s*([\d.]+)GiB"
+)
+
 _VLLM_BLOCK_SIZE = 16  # tokens per KV block, constant in vLLM v0.19.0
 
 
@@ -71,6 +82,15 @@ def parse(log_path: str | Path) -> dict[str, Any]:
     for field, pattern in _OPT_STR_PATTERNS.items():
         m = re.search(pattern, text)
         result[field] = m.group(1) if m else None
+
+    # Memory profiling breakdown (vLLM v0.19 DEBUG line, optional)
+    mp = _PROFILING_PATTERN.search(text)
+    if mp:
+        result["total_non_kv_memory_gib"]      = float(mp.group(1))
+        result["activation_memory_gib"]         = float(mp.group(2))
+        result["non_torch_forward_memory_gib"]  = float(mp.group(3))
+        # weights_memory from profiling line should match weight_memory_gib; keep for cross-check
+        result["profiling_weights_memory_gib"]  = float(mp.group(4))
 
     # Derived fields
     if "kv_cache_tokens" in result:

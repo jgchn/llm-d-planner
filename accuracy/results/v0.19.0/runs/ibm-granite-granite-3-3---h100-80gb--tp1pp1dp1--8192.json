@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-20T21:43:40.918313+00:00",
+  "timestamp": "2026-04-22T00:51:05.197169+00:00",
   "log_path": "/data/results/v0.19.0/logs/ibm-granite-granite-3-3---h100-80gb--tp1pp1dp1--8192.log",
   "weight_memory_gib": 15.25,
   "kv_cache_memory_gib": 58.66,

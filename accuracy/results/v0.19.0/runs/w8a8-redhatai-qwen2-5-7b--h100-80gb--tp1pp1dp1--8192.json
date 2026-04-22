@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-21T21:17:29.114207+00:00",
+  "timestamp": "2026-04-22T00:21:59.887264+00:00",
   "log_path": "/data/results/v0.19.0/logs/w8a8-redhatai-qwen2-5-7b--h100-80gb--tp1pp1dp1--8192.log",
   "weight_memory_gib": 8.14,
   "kv_cache_memory_gib": 64.64,

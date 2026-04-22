@@ -11,16 +11,16 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-21T03:09:59.174446+00:00",
+  "timestamp": "2026-04-22T00:10:43.868008+00:00",
   "log_path": "/data/results/v0.19.0/logs/w8a8-redhatai-llam--h100-80gb--tp1pp1dp1--8192-dtf16.log",
   "weight_memory_gib": 8.49,
   "kv_cache_memory_gib": 64.6,
   "cuda_graph_memory_gib": 0.84,
   "max_concurrency": 64.6,
-  "kv_cache_tokens": 529184,
+  "kv_cache_tokens": 529200,
   "vllm_version": null,
   "vllm_commit": null,
-  "kv_cache_blocks": 33074,
-  "kv_block_size_bytes": 2097228,
+  "kv_cache_blocks": 33075,
+  "kv_block_size_bytes": 2097164,
   "_sweep_dim": "quantization"
 }

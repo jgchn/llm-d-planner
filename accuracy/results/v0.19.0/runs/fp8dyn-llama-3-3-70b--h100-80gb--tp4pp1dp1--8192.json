@@ -11,7 +11,7 @@
     "quantization": null,
     "kv_cache_dtype": "auto"
   },
-  "timestamp": "2026-04-21T21:15:52.962454+00:00",
+  "timestamp": "2026-04-22T00:20:41.920575+00:00",
   "log_path": "/data/results/v0.19.0/logs/fp8dyn-llama-3-3-70b--h100-80gb--tp4pp1dp1--8192.log",
   "weight_memory_gib": 16.96,
   "kv_cache_memory_gib": 54.09,
