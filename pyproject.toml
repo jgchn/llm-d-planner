@@ -34,7 +34,7 @@ ui = [
     "matplotlib>=3.10.8",
 ]
 cluster = [
-    "kubernetes>=29.0",
+    "kubernetes>=35.0.0",
 ]
 dev = [
     "pytest==9.0.3",
