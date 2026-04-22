@@ -38,8 +38,8 @@ runs:
   - model: codellama/CodeLlama-7b-hf           # 7B dense; LlamaForCausalLM architecture
     tp: 1
 
-  - model: codellama/CodeLlama-34b-hf          # 34B dense; ~65 GiB bf16; tp=1 leaves ~11 GiB KV headroom
-    tp: 1                                       # if OOM, retry with tp=2
+  - model: codellama/CodeLlama-34b-hf          # 34B dense; ~65 GiB bf16; tp=1 OOM risk, using tp=2
+    tp: 2
 
   - model: deepseek-ai/DeepSeek-V2-Lite-Chat  # 16B total, 2.4B active MoE; DeepSeekV2 arch
     tp: 1
