@@ -65,8 +65,26 @@ def fv(v: float, d: int = 2) -> str:
 
 raw_ok   = [r for r in csv.DictReader(RAW_CSV.open()) if r["status"] == "ok"]
 pred_all = list(csv.DictReader(PRED_CSV.open()))
-assert len(raw_ok) == len(pred_all)
-pairs = list(zip(raw_ok, pred_all))
+
+def _row_key(r: dict) -> tuple:
+    return (r["model"], r["tp"], r["pp"], r["dp"], r["max_model_len"],
+            r["dtype"], r.get("quantization", ""), r.get("kv_cache_dtype", "auto"))
+
+pred_map: dict[tuple, list] = {}
+for p in pred_all:
+    pred_map.setdefault(_row_key(p), []).append(p)
+
+# Consume predictions in order; each raw row pops one matching prediction.
+pairs: list[tuple] = []
+_counts: dict[tuple, int] = {}
+for raw in raw_ok:
+    k = _row_key(raw)
+    bucket = pred_map.get(k, [])
+    idx = _counts.get(k, 0)
+    if idx < len(bucket):
+        pairs.append((raw, bucket[idx]))
+        _counts[k] = idx + 1
+    # rows with no matching prediction are silently skipped
 
 # ── Per-row error calculation ─────────────────────────────────────────────────
 

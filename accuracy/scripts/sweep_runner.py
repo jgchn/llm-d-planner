@@ -120,7 +120,7 @@ def _build_job_manifest(run_id: str, run: dict[str, Any]) -> dict[str, Any]:
                         ],
                         "env": [
                             {"name": "HF_TOKEN", "valueFrom":
-                             {"secretKeyRef": {"name": "hf-token", "key": "token"}}},
+                             {"secretKeyRef": {"name": run.get("hf_token_secret", "hf-token"), "key": "token"}}},
                             {"name": "HF_HOME", "value": "/data/models"},
                             {"name": "HOME", "value": "/data"},
                             {"name": "XDG_CACHE_HOME", "value": "/data/.cache"},
