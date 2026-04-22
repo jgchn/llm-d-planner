@@ -87,20 +87,30 @@ runs:
     tp: 4  # tp=1 OOM (~212 GiB total), tp=2 OOM (~106 GiB total)
 
   # ── Gemma models ──────────────────────────────────────────────────────────
-  # BLOCKED: HF token needs access granted at https://huggingface.co/google/gemma-2-2b-it
-  # (GatedRepoError 403 — all google/gemma-* repos require explicit access approval)
-  # - model: google/gemma-2-2b-it              # 2.6B dense; Gemma2 architecture
-  #   tp: 1
-  # - model: google/gemma-2-9b-it              # 9.2B dense; Gemma2 architecture
-  #   tp: 1
-  # - model: google/gemma-2-27b-it             # 27.2B dense; fits H100 80GB at bf16 (~54 GiB weights)
-  #   tp: 1
-  # - model: google/gemma-3-4b-it              # 4B dense; Gemma3 architecture
-  #   tp: 1
-  # - model: google/gemma-3-12b-it             # 12B dense; Gemma3 architecture
-  #   tp: 1
-  # - model: google/gemma-3-27b-it             # 27B dense; Gemma3 architecture
-  #   tp: 1
+  # Requires hf-token-gemma secret (separate from hf-token; Gemma repos are gated).
+  - model: google/gemma-2-2b-it              # 2.6B dense; Gemma2 architecture
+    tp: 1
+    hf_token_secret: hf-token-gemma
+
+  - model: google/gemma-2-9b-it              # 9.2B dense; Gemma2 architecture
+    tp: 1
+    hf_token_secret: hf-token-gemma
+
+  - model: google/gemma-2-27b-it             # 27.2B dense; fits H100 80GB at bf16 (~54 GiB weights)
+    tp: 1
+    hf_token_secret: hf-token-gemma
+
+  - model: google/gemma-3-4b-it              # 4B dense; Gemma3 architecture
+    tp: 1
+    hf_token_secret: hf-token-gemma
+
+  - model: google/gemma-3-12b-it             # 12B dense; Gemma3 architecture
+    tp: 1
+    hf_token_secret: hf-token-gemma
+
+  - model: google/gemma-3-27b-it             # 27B dense; Gemma3 architecture
+    tp: 1
+    hf_token_secret: hf-token-gemma
 
   # ── Kimi Dev 72B TP sensitivity (retry tp=4; tp=2 succeeded) ─────────────
   - model: moonshotai/Kimi-Dev-72B
