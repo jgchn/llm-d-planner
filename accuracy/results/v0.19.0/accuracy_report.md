@@ -7,25 +7,25 @@
 
 ## Part 1: Accuracy Evaluation
 
-Covers 50 runs across 29 models using only parameters the planner currently accepts as inputs. Excludes runs with `--dtype float32`, runtime `--quantization fp8`, and `--kv-cache-dtype fp8` (see Part 2).
+Covers 51 runs across 32 models using only parameters the planner currently accepts as inputs. Excludes runs with `--dtype float32`, runtime `--quantization fp8`, and `--kv-cache-dtype fp8` (see Part 2).
 
 ### Summary
 
 | Metric | Mean error | Mean abs error | n |
 |--------|:----------:|:--------------:|:-:|
-| KV cache memory (all runs) | +0.28% | +6.70% | 50 |
-| KV cache memory (baseline: tp=pp=dp=1, len=8192, no quant) | -5.29% | — | 19 |
-| Weight memory | -0.75% | +0.75% | 50 |
-| Activation memory | +188.64% | +188.64% | 50 |
-| Non-torch overhead | -43.54% | — | 50 |
-| Max concurrency | -2.35% | +9.90% | 50 |
+| KV cache memory (all runs) | +0.34% | +6.62% | 51 |
+| KV cache memory (baseline: tp=pp=dp=1, len=8192, no quant) | -5.12% | — | 20 |
+| Weight memory | -0.89% | +0.89% | 51 |
+| Activation memory | +195.12% | +195.12% | 51 |
+| Non-torch overhead | -44.08% | — | 51 |
+| Max concurrency | +3.34% | +15.34% | 51 |
 
 **Key findings**:
 
-- **Weight memory is accurate**: mean abs error +0.75%, computed directly from safetensors parameter counts.
-- **KV cache memory is close**: +0.28% mean error across all runs; -5.29% at baseline. Errors are small and consistent.
-- **Activation is the dominant error source**: mean +188.64% (over-estimate). The planner uses empirical constants measured against an older vLLM version; v0.19.0 reports substantially lower values. See Root Cause Analysis.
-- **Max concurrency tracks KV accuracy**: -2.35% mean error; deviations come from the per-token KV formula, not the pool size prediction.
+- **Weight memory is accurate**: mean abs error +0.89%, computed directly from safetensors parameter counts.
+- **KV cache memory is close**: +0.34% mean error across all runs; -5.12% at baseline. Errors are small and consistent.
+- **Activation is the dominant error source**: mean +195.12% (over-estimate). The planner uses empirical constants measured against an older vLLM version; v0.19.0 reports substantially lower values. See Root Cause Analysis.
+- **Max concurrency tracks KV accuracy**: +3.34% mean error; deviations come from the per-token KV formula, not the pool size prediction.
 
 ### Per-Model Results — Baseline (TP=1, PP=1, DP=1, len=8192, no quantization)
 
@@ -42,6 +42,7 @@ Covers 50 runs across 29 models using only parameters the planner currently acce
 | gemma-3-12b-it | Gemma3* | -2.61% | +39.59% | -40.00% | -0.15% | +0.00% |
 | gemma-3-27b-it | Gemma3* | -0.69% | +37.84% | -42.31% | -1.42% | +11.43% |
 | gemma-3-4b-it | Gemma3* | -6.65% | +41.39% | -40.00% | -0.27% | +2.84% |
+| gemma-7b | Gemma | -0.05% | +51.52% | -40.00% | -1.79% | -1.77% |
 | granite-3.1-2b-instruct | Granite | -0.44% | +633.33% | -67.39% | -5.27% | -5.27% |
 | granite-3.1-8b-instruct | Granite | -0.20% | +547.06% | -67.39% | -6.02% | -6.03% |
 | granite-3.3-8b-instruct | Granite | -0.20% | +547.06% | -67.39% | -6.02% | -6.03% |
@@ -108,6 +109,8 @@ The planner uses fixed constants per architecture (e.g., 4.8 GiB for Llama) cali
 | DeepseekV2 | 8.00 | 1.93–1.93 | +314.51% to +314.51% |
 | Gemma2 | 5.50 | 3.62–3.66 | +50.27% to +51.93% |
 | Gemma3* | 5.50 | 3.89–3.99 | +37.84% to +41.39% |
+| Gemma | 5.50 | 3.63–3.63 | +51.52% to +51.52% |
+| GptOss | 8.00 | 2.87–2.87 | +178.75% to +178.75% |
 | Granite | 5.50 | 0.75–0.85 | +547.06% to +633.33% |
 | KimiVL* | 8.00 | 2.85–2.92 | +173.97% to +180.70% |
 | Llama | 4.80 | 0.77–1.97 | +143.65% to +523.38% |
@@ -115,6 +118,7 @@ The planner uses fixed constants per architecture (e.g., 4.8 GiB for Llama) cali
 | Mistral3* | 2.50 | 2.03–2.18 | +14.68% to +23.15% |
 | Mixtral | 8.00 | 1.21–1.21 | +561.16% to +561.16% |
 | Phi3 | 5.50 | 1.52–1.52 | +261.84% to +261.84% |
+| Phi | 5.50 | 0.79–0.79 | +596.20% to +596.20% |
 | Qwen2 | 5.60 | 2.21–2.29 | +144.54% to +153.39% |
 | Qwen3 | 5.60 | 2.21–2.21 | +153.39% to +153.39% |
 | Qwen3Moe | 8.00 | 2.68–2.68 | +198.51% to +198.51% |
@@ -128,7 +132,7 @@ Re-calibrating these constants from the v0.19.0 measurements is the highest-valu
 | 1 | 1 | 0.15 | 0.27 | -42.17% |
 | 1 | 2 | 0.15 | 0.07 | +114.29% |
 | 1 | 4 | 0.15 | 0.07 | +114.29% |
-| 2 | 1 | 0.6 | 2.08 | -71.17% |
+| 2 | 1 | 0.6 | 2.08 | -71.15% |
 | 4 | 1 | 0.6 | 2.17 | -72.34% |
 
 TP≥2 requires NCCL all-reduce buffers (~2.1 GiB/GPU vs the 0.60 GiB constant). PP≥2 adds P2P send/receive buffers that the formula ignores entirely.
@@ -140,7 +144,7 @@ Effect: KV pool over-predicted by ~0.77 GiB (76.00 vs 75.23 GiB at 0.95 utilizat
 
 #### 4. CUDA Graph Memory
 
-Observed pool sizes: 0.51–1.85 GiB (mean 1.03 GiB). vLLM allocates CUDA graphs after sizing the KV cache, so the reported KV pool already includes CUDA graph memory — no formula correction needed.
+Observed pool sizes: 0.51–1.85 GiB (mean 1.04 GiB). vLLM allocates CUDA graphs after sizing the KV cache, so the reported KV pool already includes CUDA graph memory — no formula correction needed.
 
 ---
 
@@ -155,7 +159,7 @@ The following vLLM flags affect memory allocation but are not yet accepted as pl
 | Qwen2.5-7B-Instruct | auto | 58.53 | -4.21% | 1,096,000 | 1,049,789 | -4.22% |
 | Qwen2.5-7B-Instruct | fp8 | 58.53 | -4.21% | 2,192,000 | 1,049,789 | -52.11% |
 ||||||||
-| Llama-3.1-8B-Instruct | auto | 58.11 | -3.47% | 476,016 | 459,509 | -3.47% |
+| Llama-3.1-8B-Instruct | auto | 42.80 | +31.06% | 175,296 | 459,509 | +162.13% |
 | Llama-3.1-8B-Instruct | fp8 | 58.11 | -3.47% | 952,032 | 459,509 | -51.73% |
 ||||||||
 
@@ -165,7 +169,6 @@ The following vLLM flags affect memory allocation but are not yet accepted as pl
 
 | dtype | Actual weight (GiB) | Weight err | Actual KV (GiB) | KV err |
 |-------|:-------------------:|:----------:|:---------------:|:------:|
-| bfloat16 | 14.99 | -0.22% | 58.11 | -3.47% |
 | bfloat16 | 14.99 | -0.22% | 58.11 | -3.47% |
 | bfloat16 | 14.99 | -0.22% | 58.11 | -3.47% |
 | float16 | 14.99 | -0.22% | 58.11 | -3.47% |

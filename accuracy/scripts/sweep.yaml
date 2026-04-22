@@ -67,9 +67,18 @@ runs:
   - model: mistralai/Mixtral-8x7B-Instruct-v0.1  # 56B total, 14B active MoE
     tp: 2  # tp=1 OOM: ~87 GiB weights exceed single H100 80GB
 
-  - model: openai/gpt-oss-20b                # 20B dense; tp=1 OOM during CUDA graph warmup
+  - model: openai/gpt-oss-20b                # 20B dense; sampler warmup needs ~786 MiB/GPU beyond KV; gmu=0.90 leaves headroom
     tp: 2
+    gpu_memory_utilization: "0.90"
   # gpt-oss-120b skipped — OOM or infra unavailability at all tested tp values
+
+  - model: microsoft/phi-2                  # 2.7B dense; Phi architecture; max ctx = 2048
+    tp: 1
+    max_model_len: 2048
+
+  - model: google/gemma-7b                  # 7B dense; Gemma architecture (gated)
+    tp: 1
+    hf_token_secret: hf-token-gemma
 
   - model: Qwen/Qwen2.5-7B-Instruct          # 7B dense; reference model for sensitivity sweeps
     tp: 1

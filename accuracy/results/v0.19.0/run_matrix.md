@@ -1,8 +1,8 @@
 # Run Matrix — vLLM v0.19.0 / H100-80GB
 
-**52 successful runs, 6 failed runs.**
+**55 successful runs, 8 failed runs.**
 
-Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp8` = fp8 inline, `—` = none.
+Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp8` = fp8 inline, `mxfp4` = mx-format fp4, `—` = none.
 
 ## Successful Runs
 
@@ -16,6 +16,7 @@ Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp
 | google/gemma-3-12b-it | 1 | 1 | 1 | 8192 | bf16 | — | auto | -2.6% | +39.6% | -40.0% | -0.1% |
 | google/gemma-3-27b-it | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.7% | +37.8% | -42.3% | -1.4% |
 | google/gemma-3-4b-it | 1 | 1 | 1 | 8192 | bf16 | — | auto | -6.6% | +41.4% | -40.0% | -0.3% |
+| google/gemma-7b | 1 | 1 | 1 | 8192 | bf16 | — | auto | +0.0% | -34.0% | +66.7% | +1.8% |
 | ibm-granite/granite-3.1-2b-instruct | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.4% | +633.3% | -67.4% | -5.3% |
 | ibm-granite/granite-3.1-8b-instruct | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.2% | +547.1% | -67.4% | -6.0% |
 | ibm-granite/granite-3.3-8b-instruct | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.2% | +547.1% | -67.4% | -6.0% |
@@ -33,6 +34,7 @@ Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp
 | meta-llama/Llama-3.1-8B-Instruct | 4 | 1 | 1 | 8192 | bf16 | — | auto | -0.8% | +154.0% | -71.8% | +4.5% |
 | meta-llama/Llama-3.1-8B-Instruct | 1 | 1 | 1 | 16384 | bf16 | — | auto | -0.2% | +154.0% | -40.0% | -3.5% |
 | meta-llama/Llama-3.1-8B-Instruct | 1 | 1 | 1 | 32768 | bf16 | — | auto | -0.2% | +154.0% | -40.0% | -3.5% |
+| microsoft/phi-2 | 1 | 1 | 1 | 2048 | f16 | — | auto | +0.2% | -85.6% | +60.0% | +5.9% |
 | microsoft/phi-4 | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.3% | +261.8% | -40.0% | -6.6% |
 | mistralai/Mistral-Small-3.1-24B-Instruct-2503 | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.1% | +23.2% | -40.0% | +1.5% |
 | mistralai/Mixtral-8x7B-Instruct-v0.1 | 2 | 1 | 1 | 8192 | bf16 | — | auto | -0.0% | +561.2% | -71.0% | -1.9% |
@@ -40,6 +42,7 @@ Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp
 | moonshotai/Kimi-Dev-72B | 4 | 1 | 1 | 8192 | bf16 | — | auto | -0.5% | +144.5% | -72.9% | +9.3% |
 | moonshotai/Kimi-VL-A3B-Instruct | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.6% | +174.0% | -40.0% | -9.8% |
 | moonshotai/Kimi-VL-A3B-Instruct | 2 | 1 | 1 | 8192 | bf16 | — | auto | -1.6% | +180.7% | -71.0% | +2.4% |
+| openai/gpt-oss-20b | 2 | 1 | 1 | 8192 | bf16 | mxfp4 | auto | +9.4% | -64.1% | +245.0% | -2.7% |
 | Qwen/Qwen2.5-72B-Instruct | 2 | 1 | 1 | 8192 | bf16 | — | auto | -0.1% | +144.5% | -71.3% | +60.8% |
 | Qwen/Qwen2.5-7B-Instruct | 1 | 1 | 1 | 8192 | bf16 | — | fp8 | -0.5% | +153.4% | -37.5% | -4.2% |
 | Qwen/Qwen2.5-7B-Instruct | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.5% | +153.4% | -37.5% | -4.2% |
@@ -68,8 +71,10 @@ Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp
 | codellama/CodeLlama-34b-hf | 2 | 1 | 1 | 8192 | GPU contention at runtime |
 | meta-llama/Llama-3.1-8B-Instruct | 1 | 1 | 2 | 8192 | DP=2 |
 | meta-llama/Llama-4-Scout-17B-16E-Instruct | 4 | 1 | 1 | 8192 |  |
+| microsoft/phi-2 | 1 | 1 | 1 | 8192 | max_model_len=8192 > max_position_embeddings=2048; fixed with max_model_len=2048 |
 | moonshotai/Kimi-Dev-72B | 4 | 1 | 1 | 8192 | second attempt; tp=2 succeeded |
-| openai/gpt-oss-20b | 1 | 1 | 1 | 8192 |  |
+| openai/gpt-oss-20b | 1 | 1 | 1 | 8192 | sampler warmup OOM (~786 MiB needed, <552 MiB free) |
+| openai/gpt-oss-20b | 2 | 1 | 1 | 8192 | sampler warmup OOM at gmu=0.95; succeeded at gmu=0.90 |
 | Qwen/Qwen3-14B | 5 | 1 | 1 | 8192 | tp=5 invalid (vocab not divisible by 5) |
 
 ## Calibration decisions

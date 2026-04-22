@@ -1,0 +1,29 @@
+{
+  "model": "microsoft/phi-2",
+  "gpu": "H100-80GB",
+  "vllm_args": {
+    "tensor_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "max_model_len": 2048,
+    "gpu_memory_utilization": 0.95,
+    "dtype": "auto",
+    "quantization": null,
+    "kv_cache_dtype": "auto"
+  },
+  "timestamp": "2026-04-22T20:02:09.081677+00:00",
+  "log_path": "/data/results/v0.19.0/logs/microsoft-phi-2--h100-80gb--tp1pp1dp1--2048.log",
+  "weight_memory_gib": 5.19,
+  "kv_cache_memory_gib": 69.0,
+  "cuda_graph_memory_gib": 0.55,
+  "max_concurrency": 110.41,
+  "kv_cache_tokens": 226112,
+  "vllm_version": null,
+  "vllm_commit": null,
+  "total_non_kv_memory_gib": 6.23,
+  "activation_memory_gib": 0.79,
+  "non_torch_forward_memory_gib": 0.24,
+  "profiling_weights_memory_gib": 5.19,
+  "kv_cache_blocks": 14132,
+  "kv_block_size_bytes": 5242583
+}
