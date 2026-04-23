@@ -95,6 +95,15 @@ runs:
   - model: meta-llama/Llama-4-Scout-17B-16E-Instruct  # 109B total, 17B active MoE (16 experts)
     tp: 4  # tp=1 OOM (~212 GiB total), tp=2 OOM (~106 GiB total)
 
+  # DONE: Qwen/Qwen1.5-MoE-A2.7B tp=1
+  # - model: Qwen/Qwen1.5-MoE-A2.7B               # 14.3B total, 2.7B active MoE; Qwen2Moe architecture
+  #   tp: 1
+
+  # UNSUPPORTED: gemma4 arch not in transformers bundled with vLLM v0.19.0
+  # - model: google/gemma-4-E4B-it              # MoE; Gemma4 architecture (gated)
+  #   tp: 1
+  #   hf_token_secret: hf-token-gemma
+
   # ── Gemma models ──────────────────────────────────────────────────────────
   # Requires hf-token-gemma secret (separate from hf-token; Gemma repos are gated).
   - model: google/gemma-2-2b-it              # 2.6B dense; Gemma2 architecture
