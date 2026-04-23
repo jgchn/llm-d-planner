@@ -10,13 +10,15 @@ In all of these cases, the question is the same: **how much GPU memory will this
 
 Most teams answer it by copying what someone else deployed, or by spinning up the pod, watching it OOM, and doubling the resources. This works, but it gets harder as models grow larger and serving configurations more complex. Tensor parallelism, pipeline parallelism, quantization, and long-context windows all change the memory footprint in non-obvious ways.
 
-[llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) is an open-source capacity planning library built to answer this question before you deploy. To make sure it wasn't just replacing guesswork with a false sense of precision, we ran 57 experiments on H100 GPUs to validate its predictions against reality. Here's what we found, and why we're asking the community to help make it even better.
+[llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) is an open-source library that guides LLM deployments from concept to production. One of its core submodules is a capacity planner built to answer this question before you deploy. To make sure it wasn't just replacing guesswork with a false sense of precision, we ran 57 experiments on H100 GPUs to validate its predictions against reality. Here's what we found, and why we're asking the community to help make it even better.
 
 ---
 
 ## What llm-d-planner Does
 
-llm-d-planner is a pip-installable Python library for LLM capacity planning. You give it a model and a serving configuration and it predicts GPU memory consumption and max concurrency across four components: weights, KV cache, activation memory, and non-torch overhead (CUDA runtime and NCCL buffers for multi-GPU). Each scales differently with tensor parallelism, context length, and quantization, so knowing which component is driving your footprint tells you what to actually change. For each component, the planner anchors to a source of truth wherever one exists: `config.json` and safetensor file headers for weights, vLLM's allocation strategy for KV cache, and empirically measured constants for things that can't be derived analytically, like activation memory. The experiment in this post is how those constants are kept honest.
+llm-d-planner guides LLM deployments from concept to production: conversational requirements gathering, SLO-driven model and GPU recommendations, what-if analysis, one-click Kubernetes config generation, and monitoring. The capacity planner is a pip-installable subcomponent that focuses on one question: how much GPU memory will this deployment actually need.
+
+It breaks memory into four components: weights, KV cache, activation memory, and non-torch overhead (CUDA runtime and NCCL buffers for multi-GPU). Each scales differently with tensor parallelism, context length, and quantization, so knowing which component is driving your footprint tells you what to actually change. For each component, the planner anchors to a source of truth wherever one exists: `config.json` and safetensor file headers for weights, vLLM's allocation strategy for KV cache, and empirically measured constants for things that can't be derived analytically, like activation memory. The experiment in this post is how those constants are kept honest.
 
 ---
 
