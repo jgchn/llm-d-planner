@@ -117,7 +117,7 @@ python accuracy/scripts/collect.py
 # Results land in: data/benchmarks/memory/v0.19.0/runs/ and .../logs/
 ```
 
-Copy the new run JSONs into `accuracy/results/v0.19.0/runs/`, then generate the report.
+Copy the new run JSONs into `accuracy/results/v0.19.0/runs/` (this directory is gitignored), then generate the report.
 `analyze.py` calls the capacity planner directly to compute predictions — no separate
 calibration step needed. For gated models pass `--hf-token <token>` (only fetches
 `config.json`, not model weights):
@@ -133,10 +133,14 @@ python accuracy/scripts/deep_analysis.py \
   --out accuracy/results/v0.19.0/deep_analysis.md
 ```
 
-## Reproducing from committed results (no cluster needed)
+## Reproducing from existing results (no cluster needed)
 
-The raw run JSONs are committed in `accuracy/results/v0.19.0/runs/`. To regenerate
-the report and analysis locally:
+The raw run JSONs are not committed to git (logs and runs are large; see `.gitignore`).
+Download the `results/` folder from Google Drive and place it at `accuracy/results/`:
+
+**[Download results/ from Google Drive](https://drive.google.com/drive/folders/1a0y2gdhcpKcFxm4RsqXUKWW40Gpd2Kx5?usp=sharing)**
+
+Once downloaded, regenerate the report and analysis locally:
 
 ```bash
 uv run python accuracy/scripts/analyze.py \
