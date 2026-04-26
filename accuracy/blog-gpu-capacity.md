@@ -32,7 +32,7 @@ Claiming a tool is accurate is easy. Measuring it is harder. We launched vLLM se
 - **Dtype and quantization variants**: bfloat16, float16; compressed-tensors, GPTQ
 - **vLLM version sensitivity**: Qwen3-14B across v0.15.0 through v0.19.0 to track how memory behavior changes across releases
 
-For each run, we compared predicted values against the four measured memory components independently. The raw results and all run JSON files are committed to the repository, and the analysis is fully reproducible locally without cluster access.
+For each run, we compared predicted values against the four measured memory components independently. The [raw results and all run JSON files](https://github.com/llm-d-incubation/llm-d-planner/tree/main/accuracy/results) are committed to the repository, and the analysis is fully reproducible locally without cluster access.
 
 ---
 
@@ -46,7 +46,7 @@ Weight prediction is harder than it looks: dense, MoE, multi-head latent attenti
 
 **KV cache memory: 0.34% mean error** across all runs. This is the component that matters most for capacity planning, as it determines your maximum concurrent token budget. For Llama-3.1-8B at TP=1 with 8K context, that's roughly 58 GiB of KV pool, and we're within half a GiB across every context length we tested.
 
-One insight worth pausing on: the KV pool size is *independent* of `max_model_len`. vLLM sizes the pool from whatever memory remains after weights and activation are allocated, then figures out how many tokens fit given the per-token KV size for that architecture. This means setting a longer context window doesn't shrink your KV pool; it just means each token occupies more of it. Tools that pre-allocate based on `max_model_len` will over-estimate memory for long-context configs and leave capacity on the table.
+One insight worth pausing on: the KV pool size is *independent* of `max_model_len`. vLLM sizes the pool from whatever memory remains after weights and activation are allocated, then figures out how many tokens fit given the per-token KV size for that architecture. This means setting a longer context window doesn't shrink your KV pool; it just means each request can use a larger share of it, leaving less headroom for concurrent requests at the maximum context length. Tools that pre-allocate based on `max_model_len` will over-estimate memory for long-context configs and leave capacity on the table.
 
 These two components together typically account for 90%+ of total GPU memory consumption. Getting them right is what makes the planner useful in practice.
 
@@ -70,9 +70,11 @@ The planner's Qwen3 activation constant was 5.60 GiB, a near-exact match for v0.
 
 This kind of silent drift is precisely why empirical validation matters. We didn't catch it until we ran the experiments, and the fix was straightforward once we knew where to look: re-calibrate every architecture constant against v0.19.0 measurements. That's now done, and the updated constants are in the library.
 
+The planner currently tracks the behavior of the latest supported vLLM release (v0.19.0). It is not version-aware in the sense that it won't automatically adjust for older releases. When vLLM changes memory behavior in a future release, re-running the accuracy sweep and submitting a PR with updated constants is how the library stays current—which is exactly the kind of contribution the community campaign is designed to support.
+
 **Non-torch overhead** (CUDA runtime + NCCL buffers) was under-estimated by 44% on average. At TP=1, this is a small absolute amount (~0.25 GiB actual vs 0.15 GiB predicted). At TP>=2, NCCL all-reduce buffers push actual overhead to ~2.1 GiB per GPU versus our constant of 0.60 GiB, a more meaningful gap. Updated multi-GPU constants are also in.
 
-There are a few configurations the experiment didn't cover that the planner doesn't yet model: fp8 KV cache dtype (halves per-token storage, roughly doubling token capacity), float32 dtype overrides (doubles weight memory), runtime fp8 quantization, and data parallelism. These are real gaps for anyone running quantized production models today, and they're actively being worked on — contributions are welcome if you need one of these sooner. The sweep also turned up a subtle correctness bug in `find_possible_tp`: it wasn't verifying that TP values divide `vocab_size`, which can cause vLLM to reject a configuration the planner suggests as valid. That's fixed.
+There are a few configurations the experiment didn't cover that the planner doesn't yet model: fp8 KV cache dtype (halves per-token storage, roughly doubling token capacity), float32 dtype overrides (doubles weight memory), runtime fp8 quantization, and data parallelism. For entirely unknown precision types, the planner raises an error. For these specific gaps, the planner will produce an estimate using the base model configuration without accounting for the override—meaning results may be off for that component without an explicit warning. These are real gaps for anyone running quantized production models today, and they're actively being worked on — contributions are welcome if you need one of these sooner. The sweep also turned up a subtle correctness bug in `find_possible_tp`: it wasn't verifying that TP values divide `vocab_size`, which can cause vLLM to reject a configuration the planner suggests as valid. That's fixed.
 
 ---
 
