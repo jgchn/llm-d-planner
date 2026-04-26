@@ -18,6 +18,15 @@ PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "logs" / "prompts"
 PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Common LLM hallucinations mapped to valid use_case values
+_PRIORITY_ALIASES: dict[str, str] = {
+    "very_high": "high",
+    "very high": "high",
+    "critical": "high",
+    "very_low": "low",
+    "very low": "low",
+    "none": "low",
+}
+
 _USE_CASE_ALIASES: dict[str, str] = {
     "summarization": "summarization_short",
     "text_summarization": "summarization_short",
@@ -107,7 +116,7 @@ class IntentExtractor:
             logger.info(f"[EXTRACTED INTENT] {extracted}")
 
             # Validate and parse into Pydantic model
-            intent = self._parse_extracted_intent(extracted, user_message)
+            intent = self._parse_extracted_intent(extracted)
             logger.info(f"Extracted intent: use_case={intent.use_case}, users={intent.user_count}")
 
             return intent
@@ -116,13 +125,12 @@ class IntentExtractor:
             logger.error(f"Failed to extract intent: {e}")
             raise ValueError(f"Intent extraction failed: {e}") from e
 
-    def _parse_extracted_intent(self, raw_data: dict, user_message: str = "") -> DeploymentIntent:
+    def _parse_extracted_intent(self, raw_data: dict) -> DeploymentIntent:
         """
         Parse and validate raw LLM output into DeploymentIntent.
 
         Args:
             raw_data: Raw dict from LLM
-            user_message: Original user message for priority validation
 
         Returns:
             Validated DeploymentIntent
@@ -131,7 +139,7 @@ class IntentExtractor:
             ValueError: If data is invalid
         """
         # Handle common LLM mistakes
-        cleaned_data = self._clean_llm_output(raw_data, user_message)
+        cleaned_data = self._clean_llm_output(raw_data)
 
         try:
             return DeploymentIntent(**cleaned_data)
@@ -139,13 +147,12 @@ class IntentExtractor:
             logger.error(f"Failed to parse intent from: {cleaned_data}")
             raise ValueError(f"Invalid intent data: {e}") from e
 
-    def _clean_llm_output(self, data: dict, user_message: str = "") -> dict:
+    def _clean_llm_output(self, data: dict) -> dict:
         """
         Clean common LLM output mistakes.
 
         Args:
             data: Raw LLM output
-            user_message: Original user message for priority validation
 
         Returns:
             Cleaned data dict
@@ -272,15 +279,6 @@ class IntentExtractor:
 
         # Ensure priority fields have valid values (default to "medium" if invalid/missing)
         valid_priorities = ["low", "medium", "high"]
-        # Map common LLM variations to valid values before discarding
-        _priority_aliases = {
-            "very_high": "high",
-            "very high": "high",
-            "critical": "high",
-            "very_low": "low",
-            "very low": "low",
-            "none": "low",
-        }
         for priority_field in [
             "accuracy_priority",
             "cost_priority",
@@ -289,7 +287,7 @@ class IntentExtractor:
             if priority_field in cleaned:
                 # Normalize to lowercase and validate
                 priority_value = str(cleaned[priority_field]).lower().strip()
-                priority_value = _priority_aliases.get(priority_value, priority_value)
+                priority_value = _PRIORITY_ALIASES.get(priority_value, priority_value)
                 if priority_value not in valid_priorities:
                     logger.info(
                         f"Invalid {priority_field}='{cleaned[priority_field]}', "
@@ -308,10 +306,12 @@ class IntentExtractor:
         # topic.  Otherwise reset to medium — the LLM is likely inferring from
         # use-case type rather than from what the user said.  The SLO profiles
         # already handle use-case-appropriate targets.
+        # Default to True (trust the priority) when the LLM omits *_mentioned
+        # entirely, so a missing field doesn't silently discard valid priorities.
         for prefix in ("accuracy", "cost", "latency"):
             mentioned_key = f"{prefix}_mentioned"
             priority_key = f"{prefix}_priority"
-            mentioned_raw = cleaned.pop(mentioned_key, False)
+            mentioned_raw = cleaned.pop(mentioned_key, True)
             mentioned = (
                 str(mentioned_raw).lower() == "true"
                 if isinstance(mentioned_raw, str)

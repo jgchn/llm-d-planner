@@ -32,7 +32,21 @@
     },
     {
       "id": "uc-code-gen",
-      "description": "Detailed code generation use case",
+      "description": "Detailed code generation (natural language)",
+      "user_message": "I need a tool that writes complete functions and classes with full docstrings and explanations for 50 engineers. Not autocomplete — we want it to generate entire modules from a description.",
+      "conversation_history": null,
+      "expected": {
+        "use_case": "code_generation_detailed",
+        "experience_class": {"one_of": ["conversational", "interactive"]},
+        "user_count": {"min": 20, "max": 200},
+        "domain_specialization": {"contains": ["code"]},
+        "preferred_gpu_types": {"exact": []},
+        "preferred_models": {"exact": []}
+      }
+    },
+    {
+      "id": "uc-code-gen-explicit",
+      "description": "Detailed code generation (explicit enum — sanity test)",
       "user_message": "I need a code generation tool that produces detailed code with full explanations and documentation for 50 engineers. This is not code completion or autocomplete, it is full code_generation_detailed with long outputs.",
       "conversation_history": null,
       "expected": {
@@ -72,7 +86,20 @@
     },
     {
       "id": "uc-summarization",
-      "description": "Short summarization use case",
+      "description": "Short summarization (natural language)",
+      "user_message": "We need to summarize short news articles and blog posts into a few bullet points for 500 users. Articles are typically under a page long and we want quick, concise summaries.",
+      "conversation_history": null,
+      "expected": {
+        "use_case": "summarization_short",
+        "experience_class": {"one_of": ["conversational", "interactive", "deferred"]},
+        "user_count": {"min": 200, "max": 2000},
+        "preferred_gpu_types": {"exact": []},
+        "preferred_models": {"exact": []}
+      }
+    },
+    {
+      "id": "uc-summarization-explicit",
+      "description": "Short summarization (explicit enum — sanity test)",
       "user_message": "I need short document summarization for 500 users. They will submit brief articles under 4000 tokens and need concise summaries. This is summarization_short, not a chatbot.",
       "conversation_history": null,
       "expected": {
@@ -98,7 +125,20 @@
     },
     {
       "id": "uc-long-summary",
-      "description": "Long document summarization use case",
+      "description": "Long document summarization (natural language)",
+      "user_message": "Our 30 analysts need to condense lengthy research reports and white papers — often 50+ pages — into comprehensive executive summaries. Thoroughness matters more than speed.",
+      "conversation_history": null,
+      "expected": {
+        "use_case": "long_document_summarization",
+        "experience_class": {"one_of": ["deferred", "interactive", "batch"]},
+        "user_count": {"min": 10, "max": 100},
+        "preferred_gpu_types": {"exact": []},
+        "preferred_models": {"exact": []}
+      }
+    },
+    {
+      "id": "uc-long-summary-explicit",
+      "description": "Long document summarization (explicit enum — sanity test)",
       "user_message": "I need long document summarization for 30 analysts. They submit very long documents over 10000 tokens and need detailed summaries. Quality over speed, this is long_document_summarization not RAG.",
       "conversation_history": null,
       "expected": {
@@ -111,7 +151,20 @@
     },
     {
       "id": "uc-research",
-      "description": "Research and legal analysis use case",
+      "description": "Research and legal analysis (natural language)",
+      "user_message": "Our legal team of 10 attorneys needs to analyze lengthy regulatory filings and case law to extract relevant precedents and compliance requirements. They process very large documents and can wait for results.",
+      "conversation_history": null,
+      "expected": {
+        "use_case": "research_legal_analysis",
+        "experience_class": {"one_of": ["batch", "deferred", "interactive"]},
+        "user_count": {"min": 5, "max": 50},
+        "preferred_gpu_types": {"exact": []},
+        "preferred_models": {"exact": []}
+      }
+    },
+    {
+      "id": "uc-research-explicit",
+      "description": "Research and legal analysis (explicit enum — sanity test)",
       "user_message": "Research and legal analysis of regulatory documents for 10 lawyers. This is research_legal_analysis with batch processing of very long documents over 10000 tokens.",
       "conversation_history": null,
       "expected": {
