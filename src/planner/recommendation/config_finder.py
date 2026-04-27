@@ -19,7 +19,12 @@ TODO (Phase 2+): Parametric Performance Models
 
 import logging
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Protocol
+
+from planner.simulation.cache import get_default_cache
+from planner.simulation.client import SimulationClient, SimulationResult
+from planner.simulation.router import recommend_cache_affinity
 
 from planner.knowledge_base.benchmarks import BenchmarkData, BenchmarkRepository
 from planner.knowledge_base.model_catalog import ModelCatalog, ModelInfo
@@ -67,6 +72,8 @@ class ConfigFinder:
         self.benchmark_repo = benchmark_repo or BenchmarkRepository()
         self.catalog = catalog or ModelCatalog()
         self._quality_scorer = quality_scorer
+        self.sim_client = SimulationClient()
+        self._sim_cache = get_default_cache()
 
     def _calculate_required_replicas(self, qps_per_replica: float, required_qps: float) -> int:
         """
@@ -138,6 +145,36 @@ class ConfigFinder:
         reasons.append(f"Expected performance: TTFT={ttft_p95}ms (p95), ITL={itl_p95}ms (p95)")
 
         return ". ".join(reasons)
+
+    def _get_latency(
+        self,
+        sim_client: SimulationClient,
+        model: str,
+        gpu: str,
+        tp: int,
+        prompt_tokens: int,
+        output_tokens: int,
+        qps: float,
+        db_ttft: float,
+        db_e2e: float,
+        prefix_tokens: int = 0,
+    ) -> SimulationResult:
+        cached = self._sim_cache.get(model, gpu, tp, prompt_tokens, output_tokens, qps, prefix_tokens)
+        if cached:
+            return cached
+        result = sim_client.simulate(model, gpu, tp, prompt_tokens, output_tokens, qps, prefix_tokens)
+        if result is not None:
+            self._sim_cache.put(model, gpu, tp, prompt_tokens, output_tokens, qps, prefix_tokens, result)
+            return result
+        return SimulationResult(
+            ttft_p95_ms=float(db_ttft or 0),
+            itl_p95_ms=0.0,
+            e2e_p95_ms=float(db_e2e or 0),
+            kv_allocation_failure_rate=0.0,
+            preemption_rate=0.0,
+            responses_per_sec=0.0,
+            source="database",
+        )
 
     def plan_all_capacities(
         self,
@@ -361,10 +398,22 @@ class ConfigFinder:
 
             cost_per_month = cost_per_hour * 730  # ~30 days
 
-            # Calculate latency score and SLO status
-            predicted_ttft = int(bench.ttft_p95) if bench.ttft_p95 else 0
-            predicted_itl = int(bench.itl_p95) if bench.itl_p95 else 0
-            predicted_e2e = int(bench.e2e_p95) if bench.e2e_p95 else 0
+            # Get latency from simulation (falls back to DB values)
+            sim_qps = traffic_profile.expected_qps or 1.0
+            sim_result = self._get_latency(
+                self.sim_client,
+                bench.model_hf_repo,
+                bench.hardware,
+                bench.hardware_count,
+                traffic_profile.prompt_tokens,
+                traffic_profile.output_tokens,
+                sim_qps,
+                db_ttft=bench.ttft_p95 or 0,
+                db_e2e=bench.e2e_p95 or 0,
+            )
+            predicted_ttft = int(sim_result.ttft_p95_ms)
+            predicted_itl = int(sim_result.itl_p95_ms) if sim_result.itl_p95_ms else int(bench.itl_p95 or 0)
+            predicted_e2e = int(sim_result.e2e_p95_ms)
 
             latency_score, slo_status = scorer.score_latency(
                 predicted_ttft_ms=predicted_ttft,
@@ -478,6 +527,10 @@ class ConfigFinder:
                 ),
             )
 
+            recommendation.kv_allocation_failure_rate = sim_result.kv_allocation_failure_rate
+            recommendation.preemption_rate = sim_result.preemption_rate
+            recommendation.latency_source = sim_result.source
+
             all_configs.append(recommendation)
 
         if not all_configs:
@@ -528,6 +581,37 @@ class ConfigFinder:
                         scalability_factor = 0.65  # 35% penalty for very large deployments
 
                     rec.scores.balanced_score = round(base_balanced * scalability_factor, 1)
+
+        # Enrich top-3 balanced candidates with cache affinity simulation
+        system_prompt_tokens = getattr(traffic_profile, "system_prompt_tokens", 0)
+        if system_prompt_tokens > 0 and self.sim_client.is_available():
+            top3 = sorted(
+                all_configs,
+                key=lambda r: r.scores.balanced_score if r.scores else 0,
+                reverse=True,
+            )[:3]
+            ca_qps = traffic_profile.expected_qps or 1.0
+            with ThreadPoolExecutor(max_workers=min(3, len(top3))) as executor:
+                futures = {
+                    executor.submit(
+                        recommend_cache_affinity,
+                        self.sim_client,
+                        r.model_id,
+                        r.gpu_config.gpu_type,
+                        r.gpu_config.tensor_parallel,
+                        traffic_profile.prompt_tokens,
+                        traffic_profile.output_tokens,
+                        ca_qps,
+                        system_prompt_tokens,
+                    ): r
+                    for r in top3
+                }
+                for fut in as_completed(futures):
+                    rec = futures[fut]
+                    try:
+                        rec.cache_affinity_recommendation = fut.result()
+                    except Exception as e:
+                        logger.warning("Cache affinity simulation failed: %s", e)
 
         # Count unique models in configurations
         unique_models = {rec.model_id for rec in all_configs}
