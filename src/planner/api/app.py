@@ -12,6 +12,7 @@ from planner.api.routes import (
     capacity_planner_router,
     configuration_router,
     database_router,
+    explore_router,
     gpu_recommender_router,
     health_router,
     intent_router,
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     # Include all routers
     app.include_router(health_router)
     app.include_router(capacity_planner_router)
+    app.include_router(explore_router)
     app.include_router(gpu_recommender_router)
     app.include_router(intent_router)
     app.include_router(specification_router)

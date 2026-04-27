@@ -1,6 +1,7 @@
 """API route modules for Planner."""
 
 from .capacity_planner import router as capacity_planner_router
+from .explore import router as explore_router
 from .configuration import router as configuration_router
 from .database import router as database_router
 from .gpu_recommender import router as gpu_recommender_router
