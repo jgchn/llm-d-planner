@@ -128,10 +128,27 @@ check-prereqs: ## Check if required tools are installed
 	@printf "$(GREEN)✓ docker compose found$(NC)\n"
 	@printf "$(GREEN)All prerequisites satisfied!$(NC)\n"
 
+INFERENCE_SIM_BIN ?= ../inference-sim/simulation_worker
+
+setup-inference-sim: ## Build inference-sim binary for live simulation (requires Go and sibling inference-sim repo)
+	@if [ ! -f "$(INFERENCE_SIM_BIN)" ]; then \
+		echo "Building inference-sim binary..."; \
+		if ! command -v go > /dev/null 2>&1; then \
+			echo "Warning: Go toolchain not found. Simulation will use DB benchmarks only."; \
+			echo "To enable live simulation: install Go and re-run make setup-inference-sim"; \
+		else \
+			cd $$(dirname $(INFERENCE_SIM_BIN)) && go build -o simulation_worker ./...; \
+			echo "inference-sim binary built at $(INFERENCE_SIM_BIN)"; \
+		fi \
+	else \
+		echo "inference-sim binary already exists at $(INFERENCE_SIM_BIN)"; \
+	fi
+
 setup-backend: ## Set up Python environment (includes backend and UI dependencies)
 	@printf "$(BLUE)Setting up Python environment...$(NC)\n"
 	uv sync --extra ui --extra dev
 	@printf "$(GREEN)✓ Python environment ready (includes backend and UI dependencies)$(NC)\n"
+	$(MAKE) setup-inference-sim || true
 
 setup-ui: setup-backend ## Set up UI (uses shared venv)
 	@printf "$(GREEN)✓ UI ready (shares project venv)$(NC)\n"
