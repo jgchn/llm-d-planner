@@ -4,9 +4,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from planner.simulation.router import CacheAffinityRecommendation
+
 from .intent import DeploymentIntent
 from .specification import DeploymentSpecification, SLOTargets, TrafficProfile
-from planner.simulation.router import CacheAffinityRecommendation
 
 
 class GPUConfig(BaseModel):

@@ -5,9 +5,107 @@ Category cards, top-5 table, options list, and recommendation results.
 
 from typing import Any
 
+import pandas as pd
+import requests
 import streamlit as st
 from api_client import deploy_and_generate_yaml
 from helpers import format_display_name, format_gpu_config, get_scores
+
+
+def _reliability_emoji(status: str) -> str:
+    return {"ok": "✅", "warning": "⚠️", "critical": "🔴"}.get(status, "❓")
+
+
+def _render_explore_panel(rec: dict, backend_url: str) -> None:
+    gpu_cfg = rec.get("gpu_config") or {}
+    traffic = rec.get("traffic_profile") or {}
+
+    rec_id = f"{rec.get('model_id', '')}_{gpu_cfg.get('gpu_type', '')}_{gpu_cfg.get('tensor_parallel', 1)}"
+    state_key = f"explore_scenarios_{rec_id}"
+
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+
+    base_qps = float(traffic.get("expected_qps") or 9.0)
+    base_replicas = int(gpu_cfg.get("replicas") or 1)
+
+    col1, col2, col3, col4 = st.columns(4)
+    run_preset = None
+    with col1:
+        if st.button("Recommended", key=f"preset_base_{rec_id}"):
+            run_preset = {"label": "Recommended", "qps": base_qps, "replicas": base_replicas}
+    with col2:
+        if st.button("2× Traffic", key=f"preset_2x_{rec_id}"):
+            run_preset = {"label": "2× Traffic", "qps": base_qps * 2, "replicas": base_replicas + 1}
+    with col3:
+        if st.button("Peak Load", key=f"preset_peak_{rec_id}"):
+            run_preset = {"label": "Peak Load", "qps": base_qps * 3, "replicas": base_replicas + 2}
+    with col4:
+        show_custom = st.toggle("Custom", key=f"custom_toggle_{rec_id}")
+
+    if show_custom:
+        custom_qps = st.slider(
+            "QPS", min_value=base_qps * 0.25, max_value=base_qps * 2.0,
+            value=base_qps, step=0.5, key=f"custom_qps_{rec_id}"
+        )
+        custom_replicas = st.number_input(
+            "Replicas", min_value=1, max_value=base_replicas + 4,
+            value=base_replicas, key=f"custom_replicas_{rec_id}"
+        )
+        if st.button("Simulate", key=f"custom_sim_{rec_id}"):
+            run_preset = {"label": "Custom", "qps": custom_qps, "replicas": custom_replicas}
+
+    if run_preset is not None:
+        with st.spinner(f"Simulating {run_preset['label']}..."):
+            payload = {
+                "model": rec.get("model_id"),
+                "gpu_type": gpu_cfg.get("gpu_type"),
+                "tensor_parallelism": gpu_cfg.get("tensor_parallel", 1),
+                "gpu_count": gpu_cfg.get("gpu_count", 1),
+                "prompt_tokens": traffic.get("prompt_tokens", 512),
+                "output_tokens": traffic.get("output_tokens", 256),
+                "qps": run_preset["qps"],
+                "replicas": run_preset["replicas"],
+            }
+            try:
+                resp = requests.post(
+                    f"{backend_url}/api/v1/explore-config", json=payload, timeout=15
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    row = {
+                        "Scenario": run_preset["label"],
+                        "QPS": f"{run_preset['qps']:.1f}",
+                        "Replicas": run_preset["replicas"],
+                        "TTFT p95": f"{data['simulation']['ttft_p95_ms']:.0f}ms",
+                        "Cost/mo": f"${data['monthly_cost_usd']:,.0f}",
+                        "Reliability": _reliability_emoji(data["reliability_status"]),
+                    }
+                    scenarios = st.session_state[state_key]
+                    if len(scenarios) >= 10:
+                        non_base = [s for s in scenarios if s["Scenario"] != "Recommended"]
+                        if non_base:
+                            scenarios.remove(non_base[0])
+                    scenarios.append(row)
+                    st.session_state[state_key] = scenarios
+
+                    if data["reliability_status"] in ("warning", "critical"):
+                        st.info(
+                            f"⚠️ {run_preset['label']} shows {data['reliability_status']} reliability. "
+                            f"Try adding 1 more replica."
+                        )
+                elif resp.status_code == 503:
+                    st.warning(
+                        "Simulation binary unavailable. Install Go and run `make setup-inference-sim`."
+                    )
+                else:
+                    st.error(f"Simulation failed: {resp.status_code}")
+            except requests.exceptions.RequestException as e:
+                st.error(f"Could not reach backend: {e}")
+
+    scenarios = st.session_state.get(state_key, [])
+    if scenarios:
+        st.dataframe(pd.DataFrame(scenarios), use_container_width=True, hide_index=True)
 
 
 def _render_filter_summary():
@@ -44,7 +142,7 @@ def _render_filter_summary():
     )
 
 
-def _render_category_card(title, recs_list, highlight_field, category_key, col):
+def _render_category_card(title, recs_list, highlight_field, category_key, col, backend_url: str = "http://localhost:8000"):
     """Render a recommendation card for a category with prev/next navigation."""
     if not recs_list:
         return
@@ -161,6 +259,10 @@ def _render_category_card(title, recs_list, highlight_field, category_key, col):
             else:
                 st.caption("Cache Affinity   round-robin sufficient")
 
+        # Explore scenarios panel
+        with st.expander("🔬 Explore scenarios"):
+            _render_explore_panel(rec, backend_url)
+
         # Prev/Next navigation (circular)
         if len(recs_list) > 1:
             last = len(recs_list) - 1
@@ -254,13 +356,14 @@ def render_top5_table(recommendations: list, priority: str):
     st.session_state.top5_simplest = ranked_response.get("simplest", [])[:5]
 
     # Render 4 category cards in a 2x2 grid
+    backend_url = st.session_state.get("backend_url", "http://localhost:8000")
     col1, col2 = st.columns(2)
-    _render_category_card("Balanced", top5_balanced, "final", "balanced", col1)
-    _render_category_card("Best Accuracy", top5_accuracy, "accuracy", "accuracy", col2)
+    _render_category_card("Balanced", top5_balanced, "final", "balanced", col1, backend_url=backend_url)
+    _render_category_card("Best Accuracy", top5_accuracy, "accuracy", "accuracy", col2, backend_url=backend_url)
 
     col3, col4 = st.columns(2)
-    _render_category_card("Best Latency", top5_latency, "latency", "latency", col3)
-    _render_category_card("Best Cost", top5_cost, "cost", "cost", col4)
+    _render_category_card("Best Latency", top5_latency, "latency", "latency", col3, backend_url=backend_url)
+    _render_category_card("Best Cost", top5_cost, "cost", "cost", col4, backend_url=backend_url)
 
     total_available = len(recommendations)
     if total_available <= 2:

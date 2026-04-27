@@ -22,10 +22,6 @@ import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Protocol
 
-from planner.simulation.cache import get_default_cache
-from planner.simulation.client import SimulationClient, SimulationResult
-from planner.simulation.router import recommend_cache_affinity
-
 from planner.knowledge_base.benchmarks import BenchmarkData, BenchmarkRepository
 from planner.knowledge_base.model_catalog import ModelCatalog, ModelInfo
 from planner.shared.schemas import (
@@ -37,6 +33,9 @@ from planner.shared.schemas import (
     TrafficProfile,
 )
 from planner.shared.utils import normalize_gpu_types
+from planner.simulation.cache import get_default_cache
+from planner.simulation.client import SimulationClient, SimulationResult
+from planner.simulation.router import recommend_cache_affinity
 
 from .analyzer import get_task_bonus
 from .estimator import generate_estimated_configs
@@ -590,21 +589,22 @@ class ConfigFinder:
                 key=lambda r: r.scores.balanced_score if r.scores else 0,
                 reverse=True,
             )[:3]
+            eligible = [r for r in top3 if r.model_id and r.gpu_config]
             ca_qps = traffic_profile.expected_qps or 1.0
-            with ThreadPoolExecutor(max_workers=min(3, len(top3))) as executor:
+            with ThreadPoolExecutor(max_workers=min(3, len(eligible))) as executor:
                 futures = {
                     executor.submit(
                         recommend_cache_affinity,
                         self.sim_client,
-                        r.model_id,
-                        r.gpu_config.gpu_type,
-                        r.gpu_config.tensor_parallel,
+                        r.model_id,  # type: ignore[arg-type]
+                        r.gpu_config.gpu_type,  # type: ignore[union-attr]
+                        r.gpu_config.tensor_parallel,  # type: ignore[union-attr]
                         traffic_profile.prompt_tokens,
                         traffic_profile.output_tokens,
                         ca_qps,
                         system_prompt_tokens,
                     ): r
-                    for r in top3
+                    for r in eligible
                 }
                 for fut in as_completed(futures):
                     rec = futures[fut]
