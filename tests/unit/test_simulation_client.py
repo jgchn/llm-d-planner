@@ -89,6 +89,39 @@ def test_simulate_returns_none_on_invalid_json():
 
 
 @pytest.mark.unit
+def test_simulate_includes_prefix_tokens_in_command():
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.stdout = SAMPLE_JSON
+
+    with patch("subprocess.run", return_value=mock_proc) as mock_run, \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True):
+        client = SimulationClient(bin_path="/fake/binary")
+        client.simulate("meta-llama/llama-3.1-8b-instruct", "H100", 1, 512, 256, 9.0, prefix_tokens=400)
+
+    cmd = mock_run.call_args[0][0]
+    assert "--prefix-tokens" in cmd
+    assert "400" in cmd
+
+
+@pytest.mark.unit
+def test_simulate_omits_prefix_tokens_when_zero():
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.stdout = SAMPLE_JSON
+
+    with patch("subprocess.run", return_value=mock_proc) as mock_run, \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.access", return_value=True):
+        client = SimulationClient(bin_path="/fake/binary")
+        client.simulate("meta-llama/llama-3.1-8b-instruct", "H100", 1, 512, 256, 9.0, prefix_tokens=0)
+
+    cmd = mock_run.call_args[0][0]
+    assert "--prefix-tokens" not in cmd
+
+
+@pytest.mark.unit
 def test_simulate_constructs_correct_command():
     mock_proc = MagicMock()
     mock_proc.returncode = 0

@@ -63,9 +63,8 @@ class SimulationClient:
             "--max-prompts", "500",
             "--output", "json",
         ]
-        # Note: prefix_tokens parameter is accepted for API compatibility
-        # but not passed to inference-sim as it doesn't have a --prefix-tokens flag
-        # Future: may need to use --workload flag for GuideLLM presets if prefix support is added
+        if prefix_tokens > 0:
+            cmd += ["--prefix-tokens", str(prefix_tokens)]
 
         try:
             proc = subprocess.run(
