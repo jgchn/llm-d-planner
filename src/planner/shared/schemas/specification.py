@@ -13,6 +13,7 @@ class TrafficProfile(BaseModel):
     prompt_tokens: int = Field(..., description="Target prompt length in tokens (GuideLLM config)")
     output_tokens: int = Field(..., description="Target output length in tokens (GuideLLM config)")
     expected_qps: float | None = Field(None, description="Expected queries per second")
+    system_prompt_tokens: int = Field(default=0, description="Shared system prompt length for prefix caching estimation")
 
 
 class SLOTargets(BaseModel):

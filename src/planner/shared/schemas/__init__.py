@@ -11,6 +11,7 @@ from enum import StrEnum
 
 from .intent import ConversationMessage, DeploymentIntent
 from .recommendation import (
+    CacheAffinityRecommendation,
     ConfigurationScores,
     DeploymentRecommendation,
     GPUConfig,

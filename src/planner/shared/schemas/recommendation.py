@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from .intent import DeploymentIntent
 from .specification import DeploymentSpecification, SLOTargets, TrafficProfile
+from planner.simulation.router import CacheAffinityRecommendation
 
 
 class GPUConfig(BaseModel):
@@ -74,6 +75,20 @@ class DeploymentRecommendation(BaseModel):
     scores: ConfigurationScores | None = Field(
         default=None, description="Multi-criteria scores for ranking"
     )
+
+    # Simulation-derived reliability and routing signals
+    cache_affinity_recommendation: CacheAffinityRecommendation | None = None
+    kv_allocation_failure_rate: float = 0.0
+    preemption_rate: float = 0.0
+    latency_source: Literal["simulation", "database"] = "database"
+
+    @property
+    def reliability_status(self) -> Literal["ok", "warning", "critical"]:
+        if self.kv_allocation_failure_rate > 0.02:
+            return "critical"
+        if self.kv_allocation_failure_rate > 0 or self.preemption_rate > 0.05:
+            return "warning"
+        return "ok"
 
     def to_alternative_dict(self) -> dict:
         """
