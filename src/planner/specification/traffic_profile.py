@@ -7,6 +7,13 @@ from planner.shared.schemas import DeploymentIntent, SLOTargets, TrafficProfile
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_PROMPT_TOKEN_DEFAULTS: dict[str, int] = {
+    "chatbot_conversational": 400,
+    "code_completion": 600,
+    "code_generation_detailed": 600,
+    "document_analysis_rag": 200,
+}
+
 
 class TrafficProfileGenerator:
     """Generate traffic profiles and SLO targets from deployment intent."""
@@ -50,6 +57,7 @@ class TrafficProfileGenerator:
             prompt_tokens=template.prompt_tokens,
             output_tokens=template.output_tokens,
             expected_qps=expected_qps,
+            system_prompt_tokens=SYSTEM_PROMPT_TOKEN_DEFAULTS.get(intent.use_case, 0),
         )
 
     def generate_slo_targets(self, intent: DeploymentIntent) -> SLOTargets:
@@ -155,6 +163,7 @@ class TrafficProfileGenerator:
             prompt_tokens=512,
             output_tokens=256,
             expected_qps=default_qps,
+            system_prompt_tokens=SYSTEM_PROMPT_TOKEN_DEFAULTS.get(intent.use_case, 0),
         )
 
     def _generate_default_slo(self, intent: DeploymentIntent) -> SLOTargets:
