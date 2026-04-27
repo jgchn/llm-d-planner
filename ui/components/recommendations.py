@@ -133,6 +133,34 @@ def _render_category_card(title, recs_list, highlight_field, category_key, col):
             unsafe_allow_html=True,
         )
 
+        # Source badge + reliability row
+        latency_source = rec.get("latency_source", "database")
+        source_badge = "🔬 sim" if latency_source == "simulation" else "📊 db"
+
+        kv_fail_rate = rec.get("kv_allocation_failure_rate", 0.0) or 0.0
+        preempt_rate = rec.get("preemption_rate", 0.0) or 0.0
+        if kv_fail_rate > 0.02:
+            reliability_icon = "🔴"
+            reliability_text = f"{kv_fail_rate*100:.1f}% KV allocation failures — insufficient GPU memory"
+        elif kv_fail_rate > 0 or preempt_rate > 0.05:
+            reliability_icon = "⚠️"
+            reliability_text = f"{preempt_rate*100:.1f}% preemptions — consider adding 1 replica"
+        else:
+            reliability_icon = "✅"
+            reliability_text = f"No KV failures · {preempt_rate*100:.1f}% preemptions"
+
+        st.caption(f"{source_badge}  |  {reliability_icon} {reliability_text}")
+
+        # Cache affinity row
+        cache_rec = rec.get("cache_affinity_recommendation")
+        if cache_rec:
+            policy = cache_rec.get("policy", "round_robin")
+            improvement = cache_rec.get("simulated_ttft_improvement_pct", 0.0) or 0.0
+            if policy == "cache_aware" and improvement > 0:
+                st.caption(f"Cache Affinity   cache-aware → {improvement:.0f}% faster TTFT p95  (simulated)")
+            else:
+                st.caption("Cache Affinity   round-robin sufficient")
+
         # Prev/Next navigation (circular)
         if len(recs_list) > 1:
             last = len(recs_list) - 1
