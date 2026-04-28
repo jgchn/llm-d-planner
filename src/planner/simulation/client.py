@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 # Going up 4 dirs from that file's directory lands at the workspace root,
 # where inference-sim/ is a sibling of llm-d-planner/. Override with
 # INFERENCE_SIM_BIN env var if your layout differs.
-_DEFAULT_BIN = os.path.join(
-    os.path.dirname(__file__), "../../../../inference-sim/simulation_worker"
+_SIM_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "../../../../inference-sim")
 )
+_DEFAULT_BIN = os.path.join(_SIM_DIR, "simulation_worker")
 
 
 @dataclass
@@ -52,6 +53,10 @@ class SimulationClient:
         if qps <= 0 or not self.is_available():
             return None
 
+        sim_dir = os.environ.get(
+            "INFERENCE_SIM_DIR",
+            os.path.dirname(self.bin_path),
+        )
         cmd = [
             self.bin_path, "run",
             "--model", model,
@@ -62,6 +67,8 @@ class SimulationClient:
             "--rate", str(qps),
             "--max-prompts", "500",
             "--output", "json",
+            "--coeffs-filepath", os.path.join(sim_dir, "coefficients.yaml"),
+            "--workloads-filepath", os.path.join(sim_dir, "workloads.yaml"),
         ]
         if prefix_tokens > 0:
             cmd += ["--prefix-tokens", str(prefix_tokens)]

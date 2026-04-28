@@ -16,11 +16,11 @@ def _reliability_emoji(status: str) -> str:
     return {"ok": "✅", "warning": "⚠️", "critical": "🔴"}.get(status, "❓")
 
 
-def _render_explore_panel(rec: dict, backend_url: str) -> None:
+def _render_explore_panel(rec: dict, backend_url: str, category_key: str = "") -> None:
     gpu_cfg = rec.get("gpu_config") or {}
     traffic = rec.get("traffic_profile") or {}
 
-    rec_id = f"{rec.get('model_id', '')}_{gpu_cfg.get('gpu_type', '')}_{gpu_cfg.get('tensor_parallel', 1)}"
+    rec_id = f"{category_key}_{rec.get('model_id', '')}_{gpu_cfg.get('gpu_type', '')}_{gpu_cfg.get('tensor_parallel', 1)}"
     state_key = f"explore_scenarios_{rec_id}"
 
     if state_key not in st.session_state:
@@ -261,7 +261,7 @@ def _render_category_card(title, recs_list, highlight_field, category_key, col, 
 
         # Explore scenarios panel
         with st.expander("🔬 Explore scenarios"):
-            _render_explore_panel(rec, backend_url)
+            _render_explore_panel(rec, backend_url, category_key=category_key)
 
         # Prev/Next navigation (circular)
         if len(recs_list) > 1:
