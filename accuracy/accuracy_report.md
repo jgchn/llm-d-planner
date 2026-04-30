@@ -74,7 +74,7 @@ Covers 49 runs across 28 models using only parameters the planner currently acce
 
 ### Sensitivity: Pipeline Parallelism (PP)
 
-Model: meta-llama/Llama-3.1-8B-Instruct, TP=1, len=8192
+**Llama-3.1-8B-Instruct, TP=1, len=8192** (32 layers)
 
 | PP | Actual weight (GiB) | Weight err | Actual activ (GiB) | Activation err | Actual non-torch (GiB) | Non-torch err | KV cache err |
 |:--:|:-------------------:|:----------:|:------------------:|:--------------:|:---------------------:|:-------------:|:------------:|
@@ -82,8 +82,17 @@ Model: meta-llama/Llama-3.1-8B-Instruct, TP=1, len=8192
 | 2 | 7.51 | -0.42% | 1.10 | +336.36% | 0.07 | +114.29% | -0.85% |
 | 4 | 4.26 | -12.22% | 1.05 | +357.14% | 0.07 | +114.29% | +1.59% |
 
-- **Activation drops with PP**: PP=1 → 1.89 GiB, PP=2 → 1.10 GiB, PP=4 → 1.05 GiB. The formula always predicts 4.80 GiB regardless of PP.
-- **Weight error grows with PP**: layer imbalance across stages causes the formula (which assumes uniform distribution) to deviate at high PP.
+**Qwen3-8B, TP=1, len=8192** (36 layers; PP=3 gives exactly 12 layers per stage)
+
+| PP | Actual weight (GiB) | Weight err | Actual activ (GiB) | Activation err | Actual non-torch (GiB) | Non-torch err | KV cache err |
+|:--:|:-------------------:|:----------:|:------------------:|:--------------:|:---------------------:|:-------------:|:------------:|
+| 1 | 15.27 | -0.09% | 2.21 | +153.39% | 0.25 | -40.00% | -4.36% |
+| 3 | 5.48 | -7.20% | 0.96 | +483.33% | 0.07 | +114.29% | +0.74% |
+
+- **PP=3 (odd) works**: vLLM v0.19.0 supports non-power-of-2 pipeline stages without issues.
+- **Activation drops with PP**: follows the same pattern across both models; the formula always predicts the PP=1 constant regardless of PP.
+- **Weight error grows with PP even with perfectly divisible layers**: Qwen3-8B has 36 layers ÷ 3 = exactly 12 per stage, yet weight error is -7.20%. The formula assumes all layers are equal size; embedding and LM-head layers are not evenly distributed across stages, adding per-stage overhead the formula misses.
+- **KV cache error is small and positive at PP≥2**: +0.74% to +1.59% across both models.
 
 ### Sensitivity: Context Length (max_model_len)
 
@@ -139,6 +148,7 @@ Re-calibrating these constants against v0.19.0 measurements is the highest-value
 |:--:|:--:|:-------------------:|:-------------------:|:----------:|
 | 1 | 1 | 0.15 | 0.27 | -42.17% |
 | 1 | 2 | 0.15 | 0.07 | +114.29% |
+| 1 | 3 | 0.15 | 0.07 | +114.29% |
 | 1 | 4 | 0.15 | 0.07 | +114.29% |
 | 2 | 1 | 0.60 | 2.08 | -71.15% |
 | 4 | 1 | 0.60 | 2.17 | -72.34% |
@@ -245,7 +255,7 @@ Runtime `--quantization fp8` compresses weights on-the-fly. vLLM logs the post-c
 
 ## Run Matrix — vLLM v0.19.0 / H100-80GB
 
-**60 successful runs, 15 failed runs.**
+**61 successful runs, 15 failed runs.**
 
 Quantization abbreviations: `ct` = compressed-tensors, `gptq` = gptq_marlin, `fp8` = fp8 inline, `mxfp4` = mx-format fp4, `—` = none.
 
@@ -305,6 +315,7 @@ Vision/multi-modal models in this sweep: `moonshotai/Kimi-VL-A3B-Instruct` (visi
 | Qwen/Qwen3-30B-A3B | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.0% | +198.5% | -44.4% | -28.8% |
 | Qwen/Qwen1.5-MoE-A2.7B | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.0% | +223.9% | -40.0% | -10.1% |
 | Qwen/Qwen3-8B | 1 | 1 | 1 | 8192 | bf16 | — | auto | -0.1% | +153.4% | -40.0% | -4.4% |
+| Qwen/Qwen3-8B | 1 | 3 | 1 | 8192 | bf16 | — | auto | -7.2% | +483.3% | +114.3% | +0.7% |
 | RedHatAI/Llama-3.3-70B-Instruct-fp8-dynamic | 2 | 1 | 1 | 8192 | bf16 | ct | auto | -0.1% | +144.9% | -71.4% | +5.0% |
 | RedHatAI/Llama-3.3-70B-Instruct-fp8-dynamic | 4 | 1 | 1 | 8192 | bf16 | ct | auto | -0.2% | +143.7% | -72.9% | +5.9% |
 | redhatai/Llama-3.3-70B-Instruct-quantized.w8a8 | 2 | 1 | 1 | 8192 | bf16 | ct | auto | -0.1% | +144.9% | -71.6% | +5.0% |

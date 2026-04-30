@@ -147,6 +147,13 @@ runs:
     pp: [2, 4]
     _sweep_dim: pp
 
+  # Qwen3-8B: 36 layers; pp=3 tests odd pipeline stage count (36 / 3 = 12 layers/stage, exactly even).
+  # pp=1 baseline is covered by the Qwen3-8B core run above.
+  - model: Qwen/Qwen3-8B
+    tp: 1
+    pp: 3
+    _sweep_dim: pp
+
   # ── Sensitivity: context length (max_model_len) ─────────────────────────
   # len=8192 baseline is covered by the tp sweep entries above.
   # KV pool (GiB) is independent of max_model_len; only token count changes.
