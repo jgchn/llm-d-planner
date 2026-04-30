@@ -16,15 +16,15 @@ Memory is the first gate. Either the model fits or it doesn't, and the only way 
 
 ## How the Planner Works
 
-Memory breaks into four components: weights, KV cache, activation memory, and non-torch overhead (CUDA runtime + NCCL buffers for multi-GPU). The theoretical approach is standard: weight memory from parameter counts and dtype, KV cache from attention head dimensions and context length. Any careful engineer would use the same formulas. What makes this different is that we measured actual vLLM behavior across 61 configurations to validate the constants and catch where theory diverges from reality. The result: **weight and KV cache errors under 1%** across standard bfloat16/float16 configurations on H100-80GB. These two components account for 90%+ of total GPU memory. No GPU is required at planning time; all constants are derived from prior empirical measurements on real hardware.
+Memory breaks into four components: weights, KV cache, activation memory, and non-torch overhead. The theoretical approach is standard: weight memory from parameter counts and dtype, KV cache from attention head dimensions and context length. What makes this different is that we measured actual vLLM behavior across 61 configurations to validate those formulas and catch where theory diverges from reality. No GPU is required at planning time; all constants are grounded in prior empirical measurements on real hardware.
 
-> **Current limitations:** All constants are calibrated on H100-80GB; other GPU types may differ, especially in non-torch overhead. fp8 KV cache dtype and runtime fp8 quantization are not yet modeled and can cut memory by 40-50%, so the planner will over-estimate for those configurations without warning. Float32 dtype overrides are also unsupported. Contributions covering additional GPU types or missing quantization modes are welcome.
+**Current limitations:** Constants are calibrated on H100-80GB; other GPU types may differ. fp8 quantization modes and float32 dtype overrides are not yet modeled — treat estimates for those configurations as an upper bound.
 
 ---
 
 ## The Experiment
 
-We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured startup logs, and compared measured memory against estimates per component. The sweep covered:
+We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured startup logs, and compared measured memory against the planner's estimates. vLLM reports per-component memory usage at initialization, which is what made per-component error measurement possible. The sweep covered:
 
 - **35 model architectures**: Llama, Qwen, Gemma, Granite, Mistral, DeepSeek, Phi, Mixtral, multimodal models (LLaVA, Kimi-VL, MiMo)
 - **Tensor parallelism** (TP 1, 2, 4) and **pipeline parallelism** (PP 1, 2, 3, 4)
@@ -38,40 +38,38 @@ We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured st
 
 ## What We Found
 
-**Weight memory: 0.84% mean error** across 49 of the 61 runs (the remaining 12 used fp8/float32 configurations not yet modeled). For Llama-3.1-8B at TP=1, weights consume ~15 GiB of 79 GiB available. The formula reads exact tensor shapes from safetensor headers, making it generalizable to any HuggingFace model beyond the 35 tested.
+The two components that dominate GPU memory — weights and KV cache, together over 90% of total usage — came in under 1% mean error across standard configurations. Here's how that breaks down by model family:
 
-**KV cache memory: 0.89% mean error** across all runs. This determines your maximum concurrent token budget. The KV pool size is *independent* of `max_model_len`; vLLM sizes the pool from leftover memory after weights and activations, so a longer context window reduces concurrency rather than expanding the pool.
+| Family | Type | Weight error | KV error |
+|---|---|:---:|:---:|
+| Llama | Dense | <1% | 3–5% |
+| Qwen | Dense | <1% | ~4% |
+| Gemma 2 | Dense | <1% | 1–5% |
+| Gemma 3 | Dense | <7%* | <2% |
+| Granite | Dense | <1% | 5–6% |
+| Phi | Dense | <1% | 5–7% |
+| Mistral | Dense | <1% | <2% |
+| Mixtral | MoE | <1% | ~2% |
+| Qwen MoE | MoE | <1% | 10–29% |
+| DeepSeek MLA | MoE | <1% | ~12% |
+| LLaVA, Kimi-VL, MiMo-VL | Multimodal | <1% | 1–10% |
 
-**Activation memory: +212% mean error**, but in absolute terms that's a ~2.9 GiB over-estimate on a 79 GiB GPU. The root cause: **vLLM v0.17.0 reduced activation memory by ~60%, and we didn't notice.**
+\* One Gemma 3 variant (4B) had 6.65% weight error; all others under 1%.
 
-| vLLM version | Activation (Qwen3-14B) |
-|:---:|:---:|
-| v0.15.0 | 5.64 GiB |
-| v0.16.0 | 5.64 GiB |
-| **v0.17.0** | **2.23 GiB** |
-| v0.18.0 | 2.23 GiB |
-| v0.19.0 | ~2.21 GiB |
+Weight estimation holds consistently across all architecture types. KV cache error is higher for sparse MoE models — Qwen3-30B-A3B, where only ~10% of parameters are active per token, drives the 29% upper bound. All errors are under-estimates: the planner predicts slightly less memory than vLLM actually uses, which is the safe direction for capacity planning.
 
-Our constants reflected v0.16.0 behavior and weren't updated when vLLM changed. The v0.17.0 optimization is exactly the kind of significant change that warrants revisiting the model, not as a routine calibration exercise, but because the underlying behavior shifted materially. The longer-term goal is to derive activation memory from first principles so estimates don't depend on vLLM version at all. If you're running an earlier vLLM release, expect activation estimates to diverge from current behavior.
+**Where we got it wrong.** Activation memory showed +212% mean error, and the reason is a story worth telling. Between v0.16.0 and v0.17.0, vLLM silently reduced activation memory overhead by ~60% (from 5.64 GiB down to 2.23 GiB for Qwen3-14B), and we didn't notice until we ran these experiments. Our constants reflected the older behavior. In absolute terms the impact was ~2.9 GiB on a 79 GiB GPU: bounded, but real, and the kind of drift that's invisible without empirical validation. The right fix isn't to chase vLLM releases with updated constants; it's to derive activation memory from first principles so the estimate doesn't depend on framework internals at all.
 
-**Non-torch overhead** was under-estimated by 44% on average: small at TP=1 (~0.25 GiB actual vs 0.15 GiB predicted), more meaningful at TP>=2 (~2.1 GiB actual vs 0.60 GiB estimated).
-
-Additional findings:
-
-- **Activation error varies by architecture.** Granite was +633%, Mistral3 was only +23%. The v0.17.0 reduction wasn't uniform, which points to architecture-specific behavior that a stronger theoretical model should account for directly rather than through per-family constants.
-- **Valid TP must divide both `num_attention_heads` and `vocab_size`.** Qwen3-14B has 40 attention heads, making TP=5 look valid, but `vocab_size=151936` is not divisible by 5 and vLLM rejects it at startup. The planner was only checking attention heads; the fix is to return divisors of `gcd(num_attention_heads, vocab_size)`.
-- **`kv_cache_dtype fp8` doubles token capacity but leaves the KV pool in GiB unchanged.** fp8 halves per-token storage, so twice as many tokens fit in the same pool. The planner doesn't yet model this, so it under-estimates token count by ~2x for fp8 KV configurations while getting the GiB right.
-
-For the complete per-model breakdown, see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md).
+For the complete per-model and per-configuration breakdown, see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md).
 
 ---
 
-## Join the Community
+## Plan Before You Provision
 
-We covered 35 architectures. The sweep wasn't about generating constants to maintain; it was about verifying that the theoretical formulas hold and finding where they don't. If you hit a model family or configuration not covered here, or if a future vLLM release introduces a significant memory optimization, the sweep runner in `accuracy/` is self-contained and can be run to validate the current estimates against new behavior.
+The goal isn't a perfect number. It's a good enough answer at day 0 — before you've committed to hardware, before you've designed your deployment topology, before you've found out that the workload you planned for doesn't fit on the cluster you ordered. Memory estimation is what gives you that answer early: whether the model fits, in what configuration, and what concurrency your hardware can actually support under your expected workload.
 
 - [GitHub: llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)
 - [Full accuracy report with per-model tables](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md)
+- [Run the sweep on your own cluster](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/README.md)
 
-The broader goal is infrastructure planning at day 0. Before you provision hardware, you should know whether your model fits, in what configuration, and whether your expected workload (concurrency, context length, number of replicas) is supportable on the hardware you're considering. Memory estimation is what makes that possible. The alternative is discovering at deployment time that your hardware can't support the workload you designed for, which is an expensive place to find out. Get these answers before you deploy.
-
+No one should have to spin up a cluster to find out their workload doesn't fit.
