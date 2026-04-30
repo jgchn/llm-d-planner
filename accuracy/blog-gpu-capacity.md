@@ -38,11 +38,11 @@ We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured st
 
 ## What We Found
 
-**Weight memory: 0.84% mean error** across 49 of the 61 runs (the remaining 12 used fp8/float32 configurations not yet modeled). Weights are the largest single component; for Llama-3.1-8B at TP=1, that's ~15 GiB of 79 GiB available. The formula handles dense, MoE, multimodal, and quantized architectures by reading exact tensor shapes from safetensor headers, making it generalizable to any HuggingFace model beyond the 35 tested.
+**Weight memory: 0.84% mean error** across 49 of the 61 runs (the remaining 12 used fp8/float32 configurations not yet modeled). For Llama-3.1-8B at TP=1, weights consume ~15 GiB of 79 GiB available. The formula reads exact tensor shapes from safetensor headers, making it generalizable to any HuggingFace model beyond the 35 tested.
 
-**KV cache memory: 0.89% mean error** across all runs. This is the component that determines maximum concurrent token budget. One insight worth flagging: the KV pool size is *independent* of `max_model_len`. vLLM sizes the pool from whatever memory remains after weights and activations, then determines how many tokens fit. Setting a longer context window doesn't shrink your pool; it just means each request consumes a larger share, reducing concurrency at max context length.
+**KV cache memory: 0.89% mean error** across all runs. This determines your maximum concurrent token budget. The KV pool size is *independent* of `max_model_len`; vLLM sizes the pool from leftover memory after weights and activations, so a longer context window reduces concurrency rather than expanding the pool.
 
-**Activation memory: +212% mean error**, but in absolute terms that's a ~2.9 GiB over-estimate on a 79 GiB GPU. The more interesting finding is the root cause: **vLLM v0.17.0 reduced activation memory by ~60%, and we didn't notice.**
+**Activation memory: +212% mean error**, but in absolute terms that's a ~2.9 GiB over-estimate on a 79 GiB GPU. The root cause: **vLLM v0.17.0 reduced activation memory by ~60%, and we didn't notice.**
 
 | vLLM version | Activation (Qwen3-14B) |
 |:---:|:---:|
@@ -52,21 +52,17 @@ We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured st
 | v0.18.0 | 2.23 GiB |
 | v0.19.0 | ~2.21 GiB |
 
-Our constants were calibrated against v0.16.0 and never updated. The reduction freed memory that vLLM reallocated to the KV cache, actually improving serving capacity, but our planner was blind to it. Re-calibrating against v0.19.0 measurements is the highest-priority fix; contributions are welcome. The planner is not version-aware for older releases; if you're running an earlier vLLM in production, expect activation estimates to diverge.
+Our constants were calibrated against v0.16.0 and never updated. Re-calibrating against v0.19.0 is the highest-priority fix; contributions are welcome. The planner is not version-aware for older releases; if you're running an earlier vLLM in production, expect activation estimates to diverge.
 
-**Non-torch overhead** was under-estimated by 44% on average: small at TP=1 (~0.25 GiB actual vs 0.15 GiB predicted), more meaningful at TP>=2 (~2.1 GiB actual vs 0.60 GiB predicted). The sweep also caught a correctness bug: `find_possible_tp` wasn't verifying that TP values divide `vocab_size`, which could cause vLLM to reject configurations the planner suggested as valid. Fixed.
+**Non-torch overhead** was under-estimated by 44% on average: small at TP=1 (~0.25 GiB actual vs 0.15 GiB predicted), more meaningful at TP>=2 (~2.1 GiB actual vs 0.60 GiB predicted).
 
-Additional findings from the full data:
+Additional findings:
 
-- **Max concurrency tracked KV accuracy (3.68% mean error).** The planner predicts how many concurrent requests fit at a given context length (the number most teams actually want), and it inherits the KV cache error directly, since concurrency is just KV tokens divided by `max_model_len`.
-- **Activation error varies significantly by architecture.** Granite was +633%, Mistral3 was only +23%. The v0.17.0 reduction wasn't uniform; some architectures were hit harder, and the per-architecture constants need to be re-measured individually.
-- **Context length has zero effect on the KV pool size.** KV GiB was identical to two decimal places from 2K to 32K tokens across both Llama and Qwen models, confirming that `max_model_len` controls request size, not pool allocation.
-- **Pipeline parallelism introduces weight error even with perfectly divisible layers.** Qwen3-8B has 36 layers; PP=3 gives exactly 12 per stage, yet weight error was -7.20%. The formula assumes all layers are equal size, but embedding and LM-head layers aren't evenly distributed across pipeline stages.
-- **Valid TP must divide both `num_attention_heads` and `vocab_size`.** vLLM shards the embedding and LM-head across TP ranks, so a TP value that doesn't divide `vocab_size` will be rejected at startup even if it evenly divides the attention heads. Qwen3-14B has 40 heads (TP=5 looks valid) but `vocab_size=151936` is not divisible by 5, so vLLM rejects it. The planner was only checking attention heads; the fix is to return divisors of `gcd(num_attention_heads, vocab_size)`.
-- **`kv_cache_dtype fp8` doubles token capacity but leaves the KV pool size in GiB unchanged.** fp8 halves per-token storage, so twice as many tokens fit in the same memory pool, but the pool size in GiB is unaffected. The planner doesn't yet accept `kv_cache_dtype` as an input, so it under-estimates token count by ~2x for fp8 KV configurations while getting the GiB right.
-- **Runtime quantization and dtype overrides cause large weight errors.** `--quantization fp8` compresses weights on-the-fly to ~half the BF16 size, but the planner reads the HuggingFace config (which has no quantization entry) and predicts full BF16 weights, resulting in a +76% weight over-estimate. Conversely, `--dtype float32` doubles weight memory; the planner reads the model's native BF16 dtype and under-estimates by -50%. Both are unsupported inputs today.
+- **Activation error varies by architecture.** Granite was +633%, Mistral3 was only +23%. The v0.17.0 reduction wasn't uniform; per-architecture constants need to be re-measured individually.
+- **Valid TP must divide both `num_attention_heads` and `vocab_size`.** Qwen3-14B has 40 attention heads, making TP=5 look valid, but `vocab_size=151936` is not divisible by 5 and vLLM rejects it at startup. The planner was only checking attention heads; the fix is to return divisors of `gcd(num_attention_heads, vocab_size)`.
+- **`kv_cache_dtype fp8` doubles token capacity but leaves the KV pool in GiB unchanged.** fp8 halves per-token storage, so twice as many tokens fit in the same pool. The planner doesn't yet model this, so it under-estimates token count by ~2x for fp8 KV configurations while getting the GiB right.
 
-For the complete per-model and per-configuration breakdown (TP, PP, quantization, and context length sensitivity tables), see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md).
+For the complete per-model breakdown, see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md).
 
 ---
 
