@@ -38,7 +38,7 @@ We launched vLLM servers across 61 configurations on H100-80GB GPUs, captured st
 
 ## What We Found
 
-The two components that dominate GPU memory — weights and KV cache, together over 90% of total usage — came in under 1% mean error across standard configurations. Here's how that breaks down by model family:
+The two components that dominate GPU memory, weights and KV cache, account for over 90% of total usage. Weight estimation came in under 1% mean error across all architectures. KV cache error was low for dense models (typically under 5%) but higher for sparse MoE architectures. Here's how that breaks down by model family:
 
 | Family | Type | Weight error | KV error |
 |---|---|:---:|:---:|
@@ -60,16 +60,16 @@ Weight estimation holds consistently across all architecture types. KV cache err
 
 **Where we got it wrong.** Activation memory showed +212% mean error, and the reason is a story worth telling. Between v0.16.0 and v0.17.0, vLLM silently reduced activation memory overhead by ~60% (from 5.64 GiB down to 2.23 GiB for Qwen3-14B), and we didn't notice until we ran these experiments. Our constants reflected the older behavior. In absolute terms the impact was ~2.9 GiB on a 79 GiB GPU: bounded, but real, and the kind of drift that's invisible without empirical validation. The right fix isn't to chase vLLM releases with updated constants; it's to derive activation memory from first principles so the estimate doesn't depend on framework internals at all.
 
-For the complete per-model and per-configuration breakdown, see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md).
+For the complete per-model and per-configuration breakdown, see the [full accuracy report](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md). Beyond the numbers, running these experiments gave us a clearer picture of how LLMs actually behave at runtime, and those findings will inform the next round of improvements to the planner's accuracy.
 
 ---
 
 ## Plan Before You Provision
 
-The goal isn't a perfect number. It's a good enough answer at day 0 — before you've committed to hardware, before you've designed your deployment topology, before you've found out that the workload you planned for doesn't fit on the cluster you ordered. Memory estimation is what gives you that answer early: whether the model fits, in what configuration, and what concurrency your hardware can actually support under your expected workload.
+The goal isn't a perfect number. It's a good enough answer at day 0: before you've committed to hardware, before you've designed your deployment topology, before you've found out that the workload you planned for doesn't fit on the cluster you ordered. Memory estimation is what gives you that answer early: whether the model fits, in what configuration, and what concurrency your hardware can actually support under your expected workload.
 
 - [GitHub: llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)
 - [Full accuracy report with per-model tables](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/accuracy_report.md)
 - [Run the sweep on your own cluster](https://github.com/llm-d-incubation/llm-d-planner/blob/main/accuracy/README.md)
 
-No one should have to spin up a cluster to find out their workload doesn't fit.
+Before these experiments, we had formulas. Now we have evidence and a clearer path to making the planner accurate enough to trust before you touch a cluster.
